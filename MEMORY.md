@@ -4,11 +4,17 @@
 
 ## Estado actual
 
-- **Fase:** 2 en curso — rebanadas 1 (forecasting) y 1b (ingesta CSV) **completas**. Fase 1 + deuda cerradas.
-- **Próxima acción (Fase 2, rebanada 2):** forecaster SARIMAX (statsmodels) detrás de `PuertoForecaster`, comparado vs el baseline estacional con `MetricasForecast`. Luego rebanada 3: Seq2Seq-LSTM (PyTorch).
+- **Fase:** 2 en curso — rebanadas 1 (forecasting), 1b (ingesta CSV), 1c (CLI datos) y 2 (SARIMAX) **completas**. Fase 1 + deuda cerradas.
+- **Próxima acción (Fase 2, rebanada 3):** Seq2Seq-LSTM (PyTorch) detrás de `PuertoForecaster`, comparado vs SARIMAX y el baseline. Ojo: el LSTM real necesita datos para entrenar; sin datos chilenos reales se entrena sobre sintéticos (arquitectura + pipeline, no la promesa del ~34%).
 - **Datos reales:** CMg por barra del Coordinador (sip.coordinador.cl, descarga XLS / portal desarrollador) + generación PV simulada del Explorador Solar (solar.minenergia.cl, api.minenergia.cl). Se alinean por timestamp en un CSV `timestamp,generacion_w,cmg_mills_por_mwh` y se cargan con `GatewayCSV`.
 
 ## Bitácora
+
+### 2026-06-29 — Fase 2 rebanada 2 (forecaster SARIMAX)
+- `ForecasterSARIMAX` (statsmodels) detrás de `PuertoForecaster`: ajusta un SARIMAX por serie (gen, CMg), escenario 0 = media, resto = media + N(0, se) con semilla fija (determinista).
+- Test clave: SARIMAX **bate al estacional-naïve** en RMSE sobre datos con tendencia (el naïve repite la última estación y se queda corto).
+- Dependencia: statsmodels 0.14.6 (+ mypy override). Warnings de convergencia silenciados en el fit.
+- Verde: ruff/mypy/import-linter OK · pytest **75 passed** (+4).
 
 ### 2026-06-29 — Fase 2 rebanada 1c (CLI acopia-datos)
 - CLI `acopia-datos` (entry point) en `interfaces/cli`: subcomando `cmg` (descarga CMg de la API SIP v2 del Coordinador, sigue paginación `next`, requiere user_key en la URL) y `alinear` (cruza CMg + generación PV por timestamp → CSV de planta).

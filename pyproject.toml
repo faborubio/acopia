@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "pydantic>=2.7",
+    "statsmodels>=0.14",
 ]
 
 [project.scripts]
@@ -53,7 +54,7 @@ files = ["src", "tests"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["cvxpy", "cvxpy.*"]
+module = ["cvxpy", "cvxpy.*", "statsmodels", "statsmodels.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 
