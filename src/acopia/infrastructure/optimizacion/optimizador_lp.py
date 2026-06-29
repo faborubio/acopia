@@ -48,6 +48,12 @@ class OptimizadorLP:
             raise ValueError(
                 f"El escenario tiene {len(escenario)} puntos; la política espera {horizonte}"
             )
+        e0 = estado_inicial.energia_almacenada.wh
+        if not planta.bateria.energia_min.wh <= e0 <= planta.bateria.energia_max.wh:
+            raise ValueError(
+                f"El estado inicial ({e0} Wh) está fuera de la banda operativa "
+                f"[{planta.bateria.energia_min.wh}, {planta.bateria.energia_max.wh}] Wh"
+            )
 
         carga_ac, descarga_ac, vertido_ac = self._resolver(
             planta, estado_inicial, escenario, politica
@@ -138,7 +144,13 @@ class OptimizadorLP:
             )
 
         costo = (politica.costo_ciclado_mills_por_mwh / 1e6) * cp.sum(celdas)
-        problema = cp.Problem(cp.Maximize(precio @ inyectado - costo), restricciones)
+        objetivo = precio @ inyectado - costo
+        if politica.precio_energia_final_mills_por_mwh is not None:
+            # Valoriza la energía disponible que queda al final (evita liquidarla por
+            # el solo hecho de que el horizonte termina).
+            precio_final = politica.precio_energia_final_mills_por_mwh / 1e6
+            objetivo = objetivo + precio_final * (energia[t - 1] - e_min)
+        problema = cp.Problem(cp.Maximize(objetivo), restricciones)
         problema.solve(solver=cp.HIGHS)
 
         if problema.status not in (cp.OPTIMAL, cp.OPTIMAL_INACCURATE):

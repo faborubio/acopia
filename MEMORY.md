@@ -4,10 +4,18 @@
 
 ## Estado actual
 
-- **Fase:** 1 — Despacho determinista **cerrada** (sign-off en `docs/AUDIT.md`). Fase 0 también cerrada.
-- **Próxima acción (Fase 2):** `PuertoForecaster` + Seq2Seq-LSTM (PyTorch) con escenarios probabilísticos y baseline SARIMAX; snapshot del forecast. Antes, atender deuda del **efecto fin de horizonte** (valor/restricción de SoC terminal).
+- **Fase:** 1 cerrada + **deuda principal saldada** (SoC terminal, curtailment, estado fuera de banda, horizonte 1). Listo para Fase 2.
+- **Próxima acción (Fase 2):** `PuertoForecaster` + Seq2Seq-LSTM (PyTorch) con escenarios probabilísticos y baseline SARIMAX; snapshot del forecast.
 
 ## Bitácora
+
+### 2026-06-28 — Cierre de deuda pre-Fase 2
+- **SoC terminal:** `PoliticaDespacho.precio_energia_final_mills_por_mwh` (opcional) valoriza la energía final → no liquida la batería por fin de horizonte.
+- **Estado inicial fuera de banda:** el optimizador valida y lanza `ValueError` (REST → 422).
+- **Curtailment voluntario a CMg negativo:** confirmado por test (vierte PV en vez de inyectar a pérdida).
+- **Horizonte de 1 intervalo:** test de borde.
+- Verde: ruff/mypy/import-linter OK · pytest **47 passed**.
+- Deuda restante (a futuro): escenario único (Fase 3), re-clamp de retiro en cuantización, converger a banda si SoC inicial fuera de rango.
 
 ### 2026-06-28 — Curtailment / límite de transmisión (post-Fase 1)
 - Nueva entidad `Planta` (PV + batería + punto de conexión): `potencia_max_inyeccion` / `potencia_max_retiro`. La firma del optimizador, el caso de uso y el REST ahora usan `Planta` (antes `Bateria`).

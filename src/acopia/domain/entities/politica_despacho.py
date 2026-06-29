@@ -29,6 +29,11 @@ class PoliticaDespacho:
 
     ``costo_ciclado_mills_por_mwh`` es la penalización por degradación aplicada a la
     energía que pasa por las celdas; evita que un plan "gane" destruyendo la batería.
+
+    ``precio_energia_final_mills_por_mwh`` valoriza la energía que queda en la batería
+    al final del horizonte (evita el "efecto fin de horizonte": liquidar la batería
+    solo porque el horizonte termina). Si es ``None``, la energía final no se valoriza.
+
     La co-optimización con SSCC (``productos_sscc``) llega en la Fase 4.
     """
 
@@ -40,6 +45,7 @@ class PoliticaDespacho:
     semilla: int
     modo: Modo = Modo.PREDICT_THEN_OPTIMIZE
     costo_ciclado_mills_por_mwh: int = 0
+    precio_energia_final_mills_por_mwh: int | None = None
 
     def __post_init__(self) -> None:
         if self.version < 1:

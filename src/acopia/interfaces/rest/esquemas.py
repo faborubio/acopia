@@ -102,6 +102,7 @@ class PoliticaDTO(BaseModel):
     objetivo: Objetivo = Objetivo.MAX_INGRESO
     modo: Modo = Modo.PREDICT_THEN_OPTIMIZE
     costo_ciclado_mills_por_mwh: int = 0
+    precio_energia_final_mills_por_mwh: int | None = None
 
     def a_dominio(self) -> PoliticaDespacho:
         return PoliticaDespacho(
@@ -113,6 +114,7 @@ class PoliticaDTO(BaseModel):
             semilla=self.semilla,
             modo=self.modo,
             costo_ciclado_mills_por_mwh=self.costo_ciclado_mills_por_mwh,
+            precio_energia_final_mills_por_mwh=self.precio_energia_final_mills_por_mwh,
         )
 
 

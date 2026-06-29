@@ -33,10 +33,10 @@
 - **Comportamiento esperado:** el motor penaliza/limita ciclos extra; no "gana" arbitraje destruyendo la garantía.
 - **Cubierto por:** ✅ `tests/domain/test_modelo_bateria.py::test_throughput_garantia_agotado_es_infactible`. El optimizador LP también incluye la restricción de throughput. **Pendiente: test del optimizador con garantía casi agotada.**
 
-### Precio plano → efecto fin de horizonte (descubierto en Fase 1)
+### Precio plano → efecto fin de horizonte (descubierto en Fase 1, resuelto)
 - **Escenario:** CMg constante en todo el horizonte; sin diferencial que arbitrar.
-- **Comportamiento esperado:** nunca conviene cargar (comprar para revender al mismo precio menos eficiencia). *Limitación actual:* sin valor de SoC terminal, el modelo puede **liquidar** la batería al final del horizonte (deuda en `AUDIT.md`).
-- **Cubierto por:** ✅ `tests/application/test_planificar_despacho.py::test_precios_planos_nunca_cargan` (afirma el invariante "no cargar"; la liquidación queda como deuda).
+- **Comportamiento esperado:** nunca conviene cargar; y si se valoriza la energía final, **no se liquida** la batería solo porque el horizonte termina.
+- **Cubierto por:** ✅ `test_precios_planos_nunca_cargan` (invariante "no cargar") + ✅ `test_valor_energia_final_evita_liquidacion` (con `precio_energia_final` la batería retiene en vez de liquidar). El valor terminal es opcional en `PoliticaDespacho`.
 
 ### Resolución sub-horaria (15 min)
 - **Escenario:** horizonte con intervalos de 15 min (no divisores limpios de la hora).
@@ -76,10 +76,15 @@
 
 ### Estado inicial fuera de la banda operativa
 - **Escenario:** el SoC inicial llega por encima de soc_max o por debajo de soc_min (telemetría real, recalibración).
-- **Comportamiento esperado:** degradar con elegancia (no romper el LP); permitir converger a la banda.
-- **Estado:** ⏳ pendiente — hoy el LP sería infactible; falta manejo explícito.
+- **Comportamiento esperado:** no romper el LP con un error críptico; señalar el problema con claridad.
+- **Cubierto por:** ✅ `test_estado_inicial_fuera_de_banda_es_error` (el optimizador valida y lanza `ValueError`; el REST lo traduce a 422). *(Pendiente: permitir converger a la banda en vez de rechazar.)*
+
+### CMg negativo con batería sin capacidad de absorber
+- **Escenario:** CMg negativo y batería llena (no puede cargar más).
+- **Comportamiento esperado:** verter el PV en vez de inyectarlo a precio negativo (curtailment voluntario).
+- **Cubierto por:** ✅ `test_curtailment_voluntario_a_cmg_negativo` (vierte 50 kWh; ingreso 0 en vez de pagar por inyectar).
 
 ### Horizonte de un solo intervalo
 - **Escenario:** `horizonte_intervalos == 1`.
 - **Comportamiento esperado:** plan de una acción coherente, sin errores de borde.
-- **Estado:** ⏳ pendiente de test explícito (el dominio lo permite).
+- **Cubierto por:** ✅ `test_horizonte_de_un_intervalo`.

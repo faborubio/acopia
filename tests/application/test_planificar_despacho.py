@@ -7,6 +7,8 @@ ingreso auditable y persistencia con rastro.
 
 from __future__ import annotations
 
+import pytest
+
 from acopia.application.planificar_despacho import PlanificarDespacho
 from acopia.domain.entities.accion_despacho import TipoAccion
 from acopia.domain.entities.bateria import Bateria
@@ -279,3 +281,65 @@ def test_punto_de_conexion_holgado_no_vierte() -> None:
     planta = _planta(bateria, iny_w=10_000_000)
     plan = optimizador.optimizar(planta, estado, _escenario_curtailment(), _politica(3))
     assert sum(plan.energia_vertida_wh) == 0
+
+
+# --- Deuda resuelta: SoC terminal, estado fuera de banda, CMg negativo, horizonte 1 ---
+
+
+def test_valor_energia_final_evita_liquidacion() -> None:
+    # Con precio plano y batería llena, valorizar la energía final por encima del spot
+    # hace que NO se liquide la batería (corrige el efecto fin de horizonte).
+    optimizador = OptimizadorLP()
+    bateria = _bateria(eficiencia_pct=95)  # round-trip < 100 % penaliza el churn
+    estado = EstadoBateria(Energia(100_000))  # llena
+    escenario = Escenario(tuple(PuntoPronostico(Potencia(0), Precio(100_000)) for _ in range(2)))
+    politica = PoliticaDespacho(
+        id="con-valor-final",
+        version=1,
+        objetivo=Objetivo.MAX_INGRESO,
+        horizonte_intervalos=2,
+        resolucion=UNA_HORA,
+        semilla=42,
+        precio_energia_final_mills_por_mwh=200_000,  # vale más guardar que vender a 100k
+    )
+    plan = optimizador.optimizar(_planta(bateria), estado, escenario, politica)
+    assert all(a.tipo is TipoAccion.RETENER for a in plan.acciones)
+
+
+def test_estado_inicial_fuera_de_banda_es_error() -> None:
+    optimizador = OptimizadorLP()
+    bateria = _bateria(soc_min_pct=10, soc_max_pct=90)  # banda [10k, 90k]
+    estado = EstadoBateria(Energia(95_000))  # por encima del máximo operativo
+    with pytest.raises(ValueError, match="fuera de la banda"):
+        optimizador.optimizar(_planta(bateria), estado, _escenario_arbitraje(), _politica(4))
+
+
+def test_curtailment_voluntario_a_cmg_negativo() -> None:
+    # CMg negativo con batería llena (no puede absorber): vierte el PV en vez de
+    # inyectarlo a pérdida. Sin esto, el plan pagaría por inyectar.
+    optimizador = OptimizadorLP()
+    bateria = _bateria()
+    estado = EstadoBateria(Energia(100_000))  # llena: no puede cargar
+    escenario = Escenario((PuntoPronostico(Potencia(50_000), Precio(-100_000)),))
+    politica = PoliticaDespacho(
+        id="cmg-negativo",
+        version=1,
+        objetivo=Objetivo.MAX_INGRESO,
+        horizonte_intervalos=1,
+        resolucion=UNA_HORA,
+        semilla=42,
+        precio_energia_final_mills_por_mwh=0,  # neutraliza el valor terminal
+    )
+    plan = optimizador.optimizar(_planta(bateria), estado, escenario, politica)
+    assert plan.energia_vertida_wh[0] == 50_000  # vierte todo el PV
+    assert plan.ingreso_esperado_mills == 0      # no inyecta a precio negativo
+
+
+def test_horizonte_de_un_intervalo() -> None:
+    optimizador = OptimizadorLP()
+    bateria = _bateria()
+    estado = EstadoBateria(Energia(0))
+    escenario = Escenario((PuntoPronostico(Potencia(0), Precio(100_000)),))
+    plan = optimizador.optimizar(_planta(bateria), estado, escenario, _politica(1))
+    assert len(plan.acciones) == 1
+    assert _plan_es_factible(bateria, estado, plan)

@@ -15,6 +15,26 @@
 
 ---
 
+## Cierre de deuda (post-Fase 1, pre-Fase 2) — 2026-06-28
+
+> Antes de avanzar a Fase 2 se atendió la deuda acumulada.
+
+**Resuelto:**
+- **Efecto fin de horizonte:** `PoliticaDespacho.precio_energia_final_mills_por_mwh` (opcional) valoriza la energía final; con él, la batería no se liquida solo porque el horizonte termina. Test `test_valor_energia_final_evita_liquidacion`.
+- **Curtailment por límite de transmisión + voluntario a CMg negativo:** entidad `Planta` + variable de vertido en el LP. Tests de curtailment y `test_curtailment_voluntario_a_cmg_negativo`.
+- **Estado inicial fuera de banda:** validación con `ValueError` claro (REST → 422). Test `test_estado_inicial_fuera_de_banda_es_error`.
+- **Horizonte de un intervalo:** `test_horizonte_de_un_intervalo`.
+
+**Verificación:** ruff OK · mypy --strict 40 files 0 issues · import-linter 2 KEPT · pytest **47 passed**.
+
+**Deuda que queda (consciente, a fases futuras):**
+- Optimización sobre un solo escenario (estocástico → Fase 3).
+- Re-clamp del límite de retiro en la cuantización (hoy solo en el LP).
+- Permitir converger a la banda cuando el SoC inicial está fuera (hoy se rechaza).
+- Valor terminal por defecto sigue siendo `None` (liquidación posible si no se configura): es una decisión del operador.
+
+---
+
 ## Fase 1 — Despacho determinista — cerrada — 2026-06-28
 
 **Qué se entregó:**
