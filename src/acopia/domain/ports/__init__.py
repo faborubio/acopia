@@ -5,7 +5,8 @@ El forecast entra al optimizador como **dato** (escenarios), no como una llamada
 """
 
 from acopia.domain.ports.puerto_forecaster import PuertoForecaster
+from acopia.domain.ports.puerto_historia import PuertoHistoria
 from acopia.domain.ports.puerto_optimizador import PuertoOptimizador
 from acopia.domain.ports.repositorio_planes import RepositorioPlanes
 
-__all__ = ["PuertoForecaster", "PuertoOptimizador", "RepositorioPlanes"]
+__all__ = ["PuertoForecaster", "PuertoHistoria", "PuertoOptimizador", "RepositorioPlanes"]

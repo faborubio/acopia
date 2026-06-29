@@ -4,10 +4,17 @@
 
 ## Estado actual
 
-- **Fase:** 2 en curso — rebanada 1 (andamiaje de forecasting) **completa**. Fase 1 + deuda cerradas.
+- **Fase:** 2 en curso — rebanadas 1 (forecasting) y 1b (ingesta CSV) **completas**. Fase 1 + deuda cerradas.
 - **Próxima acción (Fase 2, rebanada 2):** forecaster SARIMAX (statsmodels) detrás de `PuertoForecaster`, comparado vs el baseline estacional con `MetricasForecast`. Luego rebanada 3: Seq2Seq-LSTM (PyTorch).
+- **Datos reales:** CMg por barra del Coordinador (sip.coordinador.cl, descarga XLS / portal desarrollador) + generación PV simulada del Explorador Solar (solar.minenergia.cl, api.minenergia.cl). Se alinean por timestamp en un CSV `timestamp,generacion_w,cmg_mills_por_mwh` y se cargan con `GatewayCSV`.
 
 ## Bitácora
+
+### 2026-06-29 — Fase 2 rebanada 1b (gateway de ingesta CSV)
+- `PuertoHistoria` (puerto) + `GatewayCSV` (infra, stdlib `csv`): lee `timestamp,generacion_w,cmg_mills_por_mwh` → `tuple[Observacion]`, con validaciones que reportan el número de fila.
+- Fixture `tests/infrastructure/datos/muestra_planta.csv` + tests (carga, columnas faltantes, archivo inexistente, valor inválido, generación negativa, integración con el forecaster).
+- Es la pieza que conecta datos reales (Coordinador + Explorador Solar) con el pipeline sin meter datasets grandes al repo.
+- Verde: ruff/mypy/import-linter OK · pytest **64 passed** (+7).
 
 ### 2026-06-29 — Fase 2 rebanada 1 (andamiaje de forecasting)
 - `PuertoForecaster` (puerto) + entidad `Observacion` (serie histórica observada).
