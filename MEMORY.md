@@ -4,10 +4,21 @@
 
 ## Estado actual
 
-- **Fase:** 0 — Scaffolding **cerrada** (sign-off en `docs/AUDIT.md`).
-- **Próxima acción (Fase 1):** definir los Protocols de `ports/` (`PuertoForecaster`, `PuertoOptimizador`, `PuertoDatos`, repositorios) y el primer caso de uso `PlanificarDespacho` con un optimizador determinista que reciba un forecast dado y produzca un plan factible.
+- **Fase:** 1 — Despacho determinista **cerrada** (sign-off en `docs/AUDIT.md`). Fase 0 también cerrada.
+- **Próxima acción (Fase 2):** `PuertoForecaster` + Seq2Seq-LSTM (PyTorch) con escenarios probabilísticos y baseline SARIMAX; snapshot del forecast. Antes, atender deuda del **efecto fin de horizonte** (valor/restricción de SoC terminal).
 
 ## Bitácora
+
+### 2026-06-28 — Fase 1 cerrada (despacho determinista + REST)
+- Entidades del problema (Escenario, PoliticaDespacho versionada, PlanDespacho, Rastro) + `Precio` (CMg mills/MWh, admite negativos).
+- `OptimizadorLP` predict-then-optimize con **cvxpy + HIGHS**; salida cuantizada a enteros y validada contra `ModeloBateria` → siempre factible. `FuncionObjetivo` da el ingreso auditable.
+- Caso de uso `PlanificarDespacho` (fija política + persiste snapshot). REST FastAPI (`POST /planes`, `GET /planes/{id}`, `/salud`) con DTOs Pydantic v2.
+- Verde: ruff OK · mypy 39 files 0 issues · import-linter 2 KEPT · pytest **35 passed**.
+- **Deuda:** efecto fin de horizonte (SoC terminal sin valor → puede liquidar batería); escenario único (estocástico en Fase 3); repair conservador a RETENER.
+- **Incidente:** disco C: llegó a 0 GB libres (corrompió cachés mypy/import-linter); liberado con `pip cache purge`. OJO: disco crítico, el usuario debe liberar espacio.
+- Dependencias nuevas: cvxpy 1.9.2 (HIGHS), fastapi, uvicorn, pydantic, httpx (dev).
+
+### 2026-06-28 — Fase 0 cerrada (scaffolding + dominio)
 
 ### 2026-06-28 — Fase 0 cerrada (scaffolding + dominio)
 - Andamiaje completo: `pyproject.toml` (uv·ruff·mypy --strict·import-linter), capas Clean Architecture, value objects enteros, entidades y `ModeloBateria` puro (SoC, eficiencia, throughput de garantía).

@@ -15,6 +15,32 @@
 
 ---
 
+## Fase 1 — Despacho determinista — cerrada — 2026-06-28
+
+**Qué se entregó:**
+- Entidades del problema: `Escenario`/`PuntoPronostico`, `PoliticaDespacho` (versionada), `PlanDespacho`, `RastroDespacho`; value object `Precio` (CMg en mills/MWh, admite negativos).
+- `FuncionObjetivo` pura: ingreso bruto auditable de un plan + costo de ciclado.
+- Puertos `PuertoOptimizador` y `RepositorioPlanes` (Protocols en el dominio).
+- `OptimizadorLP` (infra): predict-then-optimize determinista con **cvxpy + HIGHS**; el plan continuo se **cuantiza a enteros y se valida contra `ModeloBateria`** (factibilidad garantizada).
+- Caso de uso `PlanificarDespacho`: fija política, optimiza, persiste plan + rastro (snapshot as-seen).
+- Repositorio en memoria.
+- **REST (FastAPI):** `POST /planes`, `GET /planes/{id}`, `GET /salud`; DTOs Pydantic v2 con mapeo DTO<->dominio en `interfaces/`.
+
+**Verificación (todo en verde):**
+- `ruff` OK · `mypy --strict` 39 files 0 issues · `lint-imports` 2 contratos KEPT · `pytest` **35 passed**.
+- Tests clave: arbitraje "compra barato/vende caro" (ingreso 49.000 mills exacto), plan factible (replay con ModeloBateria), determinismo (mismo plan), ingreso auditable, persistencia con rastro, y REST (200/422/404).
+
+**Vista de halcón (qué quedó débil / deuda):**
+- **Efecto fin de horizonte:** el modelo aún no valoriza el SoC terminal, así que con precio positivo y sin diferencial puede liquidar la batería al final del horizonte. Deuda Fase 2/3: valor o restricción de SoC terminal.
+- Optimización sobre **un solo escenario** (caso medio); la programación estocástica sobre escenarios llega en Fase 3.
+- Cuantización entera con repair conservador a RETENER ante violaciones de redondeo: correcto pero puede dejar ingreso marginal sobre la mesa en bordes.
+- Warning cosmético de deprecación httpx/starlette en TestClient (no afecta).
+
+**Incidente de entorno:** durante la verificación el disco C: llegó a **0 GB libres**, corrompiendo cachés de mypy/import-linter. Se liberó espacio con `pip cache purge` (~132 MB). **Acción pendiente del usuario:** liberar disco; queda muy ajustado.
+
+**Deuda generada:** SoC terminal, escenario único, repair conservador.
+**Sign-off:** ✅ 2026-06-28.
+
 ## Fase 0 — Scaffolding — cerrada — 2026-06-28
 
 **Qué se entregó:**

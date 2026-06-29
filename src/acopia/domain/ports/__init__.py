@@ -1,6 +1,10 @@
 """Puertos (interfaces) que el dominio define y la infraestructura implementa.
 
-Aquí vivirán ``PuertoForecaster``, ``PuertoOptimizador``, ``PuertoDatos`` y los
-repositorios (ver §5.2 del SAD). Se introducen junto con los casos de uso en la
-Fase 1; en Fase 0 el paquete existe para fijar la frontera.
+El forecast entra al optimizador como **dato** (escenarios), no como una llamada:
+``PuertoForecaster`` se introduce en la Fase 2 junto con el Seq2Seq-LSTM.
 """
+
+from acopia.domain.ports.puerto_optimizador import PuertoOptimizador
+from acopia.domain.ports.repositorio_planes import RepositorioPlanes
+
+__all__ = ["PuertoOptimizador", "RepositorioPlanes"]

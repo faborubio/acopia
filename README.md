@@ -6,7 +6,11 @@ Motor de optimización de despacho para una planta solar con batería (PV-BESS) 
 
 ## Estado
 
-**Fase 0 — Scaffolding.** Esqueleto de capas (Clean Architecture), value objects y `ModeloBateria` puro con property-tests de determinismo y factibilidad. Ver [`docs/AUDIT.md`](./docs/AUDIT.md).
+**Fase 1 — Despacho determinista (cerrada).** Optimizador predict-then-optimize (cvxpy + HIGHS) que, dado un forecast, genera un plan de despacho **factible y rentable**, con ingreso auditable y API REST. Sobre el scaffolding de Fase 0 (capas, value objects, `ModeloBateria` puro, property-tests). Ver [`docs/AUDIT.md`](./docs/AUDIT.md).
+
+```bash
+uv run uvicorn acopia.interfaces.rest.app:app --reload   # API en http://127.0.0.1:8000/docs
+```
 
 ## Estructura
 
