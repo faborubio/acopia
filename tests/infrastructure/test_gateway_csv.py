@@ -52,6 +52,16 @@ def test_valor_no_numerico_reporta_la_fila(tmp_path: Path) -> None:
         GatewayCSV(ruta).cargar()
 
 
+def test_lee_coma_decimal_chilena(tmp_path: Path) -> None:
+    ruta = tmp_path / "chileno.csv"
+    ruta.write_text(
+        "timestamp,generacion_w,cmg_mills_por_mwh\n2025-06-01 00:00,80000,\"57,79415\"\n",
+        encoding="utf-8",
+    )
+    observaciones = GatewayCSV(ruta).cargar()
+    assert observaciones[0].cmg == Precio(58)  # 57,79415 -> 58
+
+
 def test_generacion_negativa_reporta_la_fila(tmp_path: Path) -> None:
     ruta = tmp_path / "negativo.csv"
     ruta.write_text(

@@ -1,11 +1,14 @@
 """CLI `acopia-datos`: prepara datos reales chilenos al formato de la planta modelo.
 
 Subcomandos:
-- ``cmg``: descarga el costo marginal del Coordinador (API SIP v2, requiere un
-  ``user_key`` gratuito de portal.api.coordinador.cl incluido en la URL) y lo
-  guarda como CSV ``timestamp,cmg_mills_por_mwh``. Sigue la paginación (``next``).
-- ``alinear``: cruza ese CMg con la generación PV exportada del Explorador Solar
-  y escribe el CSV ``timestamp,generacion_w,cmg_mills_por_mwh`` para `GatewayCSV`.
+- ``cmg``: descarga CMg de una API JSON paginada por ``next`` (formato SIP v2).
+  OJO: la API actual del Coordinador es **v4** (page/limit, ver ``MEMORY.md``) y no
+  filtra por barra; para un set real conviene la **descarga manual del XLS**. Este
+  subcomando se mantiene para APIs con paginación ``next`` pero quedó desalineado
+  del Coordinador v4 (reescribir si se quiere la vía API).
+- ``alinear``: cruza el CMg con la generación PV exportada del Explorador Solar y
+  escribe el CSV ``timestamp,generacion_w,cmg_mills_por_mwh`` para `GatewayCSV`.
+  Usa ``--por-posicion`` cuando las series son de años distintos.
 
 La generación PV no tiene API horaria pública: se exporta desde solar.minenergia.cl
 y se pasa a ``alinear`` (con --col-gen/--escala-gen según el formato exportado).
@@ -20,6 +23,7 @@ from typing import Any
 
 from acopia.infrastructure.ingesta.preparacion import (
     Serie,
+    alinear_por_posicion,
     alinear_series,
     escribir_csv_planta,
     escribir_serie_csv,
@@ -59,6 +63,12 @@ def _construir_parser() -> argparse.ArgumentParser:
     alinear.add_argument("--col-ts-gen", default="timestamp")
     alinear.add_argument("--col-gen", default="generacion_w")
     alinear.add_argument("--escala-gen", type=float, default=1.0, help="Factor a W (1000 si es kW)")
+    alinear.add_argument(
+        "--por-posicion",
+        action="store_true",
+        help="Une por posición (hora a hora) en vez de por timestamp; usa el ts del CMg. "
+        "Necesario si las series son de años distintos (CMg real + Explorador Solar).",
+    )
     alinear.add_argument("--salida", required=True, help="CSV de planta (lo consume GatewayCSV)")
     return parser
 
@@ -73,7 +83,10 @@ def main(argv: list[str] | None = None) -> int:
     elif args.comando == "alinear":
         cmg = leer_serie_csv(args.cmg, args.col_ts_cmg, args.col_cmg)
         generacion = leer_serie_csv(args.generacion, args.col_ts_gen, args.col_gen, args.escala_gen)
-        filas = alinear_series(generacion, cmg)
+        if args.por_posicion:
+            filas = alinear_por_posicion(generacion, cmg)
+        else:
+            filas = alinear_series(generacion, cmg)
         escribir_csv_planta(args.salida, filas)
         print(f"Alineadas {len(filas)} filas en {args.salida}")
     return 0

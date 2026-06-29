@@ -46,21 +46,26 @@ docker compose up -d db
 ## Datos reales (Chile)
 
 El motor consume una serie horaria `timestamp,generacion_w,cmg_mills_por_mwh`
-(la "planta modelo"). Se arma con `acopia-datos`:
+(la "planta modelo"), que se arma de dos fuentes:
+
+1. **CMg por barra — Coordinador Eléctrico.** Vía práctica: **descargar el XLS**
+   de [Costo Marginal Real](https://www.coordinador.cl/mercados/documentos/transferencias-economicas/costo-marginal-real/)
+   filtrando una barra y un rango de fechas, y guardarlo como CSV.
+   *(La API existe — `costo-marginal-online/v4/findByDate`, ver `MEMORY.md` — pero
+   no filtra por barra y está rate-limited: inviable para bajar un año de una barra.)*
+2. **Generación PV — Explorador Solar** ([solar.minenergia.cl](https://solar.minenergia.cl/exploracion)):
+   exportar la serie horaria de generación de la ubicación de la planta -> `gen.csv`.
+
+Como el Explorador es un "año típico" (2004–2016) y el CMg es de otro año, **no
+comparten calendario**: se alinean **por posición** (hora a hora), con el timestamp del CMg:
 
 ```bash
-# 1) CMg por barra desde el Coordinador (requiere user_key gratuito de
-#    portal.api.coordinador.cl, incluido en la URL del recurso SIP)
-acopia-datos cmg --url "https://sipub.api.coordinador.cl/.../costos_marginales_reales?...&user_key=TU_KEY" \
-  --campo-ts fecha --campo-cmg cmg --escala 1000 --salida cmg.csv
-
-# 2) Generación PV: exportar la serie horaria del Explorador Solar
-#    (solar.minenergia.cl) para la ubicación de la planta -> gen.csv
-
-# 3) Alinear ambas por timestamp al formato de la planta
-acopia-datos alinear --cmg cmg.csv --generacion gen.csv \
-  --col-gen generacion_kw --escala-gen 1000 --salida planta.csv
+acopia-datos alinear --por-posicion \
+  --cmg cmg.csv --col-cmg "Costo Marginal [USD/MWh]" \
+  --generacion gen.csv --col-gen generacion_kw --escala-gen 1000 \
+  --salida planta.csv
 ```
 
-Luego `GatewayCSV("planta.csv").cargar()` entrega la serie de `Observacion` que
-alimenta el forecaster y el despacho.
+Los lectores toleran **coma decimal chilena** (`"57,79"`). Luego
+`GatewayCSV("planta.csv").cargar()` entrega la serie de `Observacion` que alimenta
+el forecaster y el despacho.

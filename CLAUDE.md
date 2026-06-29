@@ -39,4 +39,6 @@ Python 3.12+ · FastAPI · FastMCP · cvxpy/Pyomo + solver MILP · PyTorch (Seq2
 
 ## Estado actual
 
-Ver `MEMORY.md`. **Fase 0 (scaffolding)** en curso.
+Ver `MEMORY.md` (fuente de verdad del avance). Fases 0 y 1 cerradas (+ deuda saldada);
+**Fase 2 (forecasting) en curso**: baseline estacional, SARIMAX, ingesta CSV y CLI
+`acopia-datos` listos. Próximo: Seq2Seq-LSTM. Datos reales: ver bitácora del 2026-06-29.

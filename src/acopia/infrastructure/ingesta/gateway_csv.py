@@ -23,6 +23,7 @@ from typing import ClassVar
 from acopia.domain.entities.observacion import Observacion
 from acopia.domain.value_objects.potencia import Potencia
 from acopia.domain.value_objects.precio import Precio
+from acopia.infrastructure.ingesta.preparacion import parsear_decimal
 
 
 class GatewayCSV:
@@ -52,8 +53,8 @@ class GatewayCSV:
 
     def _fila_a_observacion(self, fila: dict[str, str | None], numero_fila: int) -> Observacion:
         try:
-            generacion = round(float(fila[self.COL_GENERACION] or ""))
-            cmg = round(float(fila[self.COL_CMG] or ""))
+            generacion = round(parsear_decimal(fila[self.COL_GENERACION] or ""))
+            cmg = round(parsear_decimal(fila[self.COL_CMG] or ""))
             return Observacion(Potencia(generacion), Precio(cmg))
         except ValueError as error:
             raise ValueError(f"Fila {numero_fila}: dato inválido ({error})") from error

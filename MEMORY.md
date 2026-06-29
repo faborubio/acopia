@@ -6,9 +6,25 @@
 
 - **Fase:** 2 en curso — rebanadas 1 (forecasting), 1b (ingesta CSV), 1c (CLI datos) y 2 (SARIMAX) **completas**. Fase 1 + deuda cerradas.
 - **Próxima acción (Fase 2, rebanada 3):** Seq2Seq-LSTM (PyTorch) detrás de `PuertoForecaster`, comparado vs SARIMAX y el baseline. Ojo: el LSTM real necesita datos para entrenar; sin datos chilenos reales se entrena sobre sintéticos (arquitectura + pipeline, no la promesa del ~34%).
-- **Datos reales:** CMg por barra del Coordinador (sip.coordinador.cl, descarga XLS / portal desarrollador) + generación PV simulada del Explorador Solar (solar.minenergia.cl, api.minenergia.cl). Se alinean por timestamp en un CSV `timestamp,generacion_w,cmg_mills_por_mwh` y se cargan con `GatewayCSV`.
+- **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-06-29 — Fixes de datos reales (coma decimal + alineación por posición)
+- **`parsear_decimal`** (en `infrastructure/ingesta/preparacion.py`): tolera coma decimal chilena (`"57,79415"` → 57.79415; `"1.234,56"` → 1234.56). Lo usan `GatewayCSV`, `leer_serie_csv` y `extraer_cmg`. Necesario porque TODO dato chileno trae coma.
+- **`alinear_por_posicion`** + flag CLI **`--por-posicion`**: une CMg y generación por índice (hora a hora) usando el timestamp del CMg. Necesario porque el Explorador Solar es "año típico" (2004–2016) y el CMg es de otro año → no comparten calendario. Exige mismo largo (evita desfases).
+- Verde: ruff/mypy/import-linter OK · pytest **81 passed** (+6).
+
+### 2026-06-29 — API real del Coordinador (IMPORTANTE para la próxima sesión)
+- El portal del desarrollador usa endpoints **v4** tipo microservicio, NO el `…/sipub/api/v2/recursos/…` documentado (obsoleto). El correcto es:
+  - **`https://sipub.api.coordinador.cl/costo-marginal-real/v4/findByDate`** (real, definitivo, con rezago de meses)
+  - **`https://sipub.api.coordinador.cl/costo-marginal-online/v4/findByDate`** (preliminar, al día)
+  - Params: **`startDate`/`endDate`** (YYYY-MM-DD), `page`/`limit`; respuesta JSON con `data`, `page`, `limit`, `totalPages` (paginación por página, NO `next`).
+  - Campos de cada registro: `fecha_hora` (`"2025-06-01 00:00"`, horario), `barra_transf` (mnemónico, ej. `S.GREGORIO____013`), `cmg_clp_kwh_` y `cmg_usd_mwh_` (**coma decimal**), `version`, etc.
+  - La key debe ser del servicio **Información Pública (SIP)** (cada app/servicio tiene su propia key).
+- **Por qué NO usar la API para bulk:** no filtra por barra en el servidor (ignora el param) → ~150.000 registros/día (todas las barras), y aparece **429 (rate limit)**. Para un año de UNA barra es inviable.
+- **El `acopia-datos cmg` actual quedó OBSOLETO** (lo armé para el formato v2 `next`/`results`). Si se quiere vía API hay que reescribirlo para v4 (page/limit, `data`, filtrar barra en cliente, coma decimal). Baja prioridad: la descarga manual del XLS es mejor.
+- Pendiente del usuario: **rotar la key de SIP** (estuvo expuesta en el chat).
 
 ### 2026-06-29 — Fase 2 rebanada 2 (forecaster SARIMAX)
 - `ForecasterSARIMAX` (statsmodels) detrás de `PuertoForecaster`: ajusta un SARIMAX por serie (gen, CMg), escenario 0 = media, resto = media + N(0, se) con semilla fija (determinista).
