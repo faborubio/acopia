@@ -42,3 +42,25 @@ Base de datos (TimescaleDB) para fases posteriores:
 ```bash
 docker compose up -d db
 ```
+
+## Datos reales (Chile)
+
+El motor consume una serie horaria `timestamp,generacion_w,cmg_mills_por_mwh`
+(la "planta modelo"). Se arma con `acopia-datos`:
+
+```bash
+# 1) CMg por barra desde el Coordinador (requiere user_key gratuito de
+#    portal.api.coordinador.cl, incluido en la URL del recurso SIP)
+acopia-datos cmg --url "https://sipub.api.coordinador.cl/.../costos_marginales_reales?...&user_key=TU_KEY" \
+  --campo-ts fecha --campo-cmg cmg --escala 1000 --salida cmg.csv
+
+# 2) Generación PV: exportar la serie horaria del Explorador Solar
+#    (solar.minenergia.cl) para la ubicación de la planta -> gen.csv
+
+# 3) Alinear ambas por timestamp al formato de la planta
+acopia-datos alinear --cmg cmg.csv --generacion gen.csv \
+  --col-gen generacion_kw --escala-gen 1000 --salida planta.csv
+```
+
+Luego `GatewayCSV("planta.csv").cargar()` entrega la serie de `Observacion` que
+alimenta el forecaster y el despacho.

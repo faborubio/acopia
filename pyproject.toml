@@ -12,6 +12,9 @@ dependencies = [
     "pydantic>=2.7",
 ]
 
+[project.scripts]
+acopia-datos = "acopia.interfaces.cli.preparar_datos:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2",

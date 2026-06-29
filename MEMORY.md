@@ -10,6 +10,12 @@
 
 ## Bitácora
 
+### 2026-06-29 — Fase 2 rebanada 1c (CLI acopia-datos)
+- CLI `acopia-datos` (entry point) en `interfaces/cli`: subcomando `cmg` (descarga CMg de la API SIP v2 del Coordinador, sigue paginación `next`, requiere user_key en la URL) y `alinear` (cruza CMg + generación PV por timestamp → CSV de planta).
+- Endpoint real CMg: `https://sipub.api.coordinador.cl/sipub/api/v2/recursos/costos_marginales_reales` (user_key gratuito de portal.api.coordinador.cl). Generación PV: sin API horaria pública → exportar del Explorador Solar y pasar a `alinear`.
+- Helpers puros testeables en `infrastructure/ingesta/preparacion.py` (leer_serie_csv, extraer_cmg, alinear_series, escribir_*). HTTP con urllib (stdlib).
+- Verde: ruff/mypy/import-linter OK · pytest **71 passed** (+7).
+
 ### 2026-06-29 — Fase 2 rebanada 1b (gateway de ingesta CSV)
 - `PuertoHistoria` (puerto) + `GatewayCSV` (infra, stdlib `csv`): lee `timestamp,generacion_w,cmg_mills_por_mwh` → `tuple[Observacion]`, con validaciones que reportan el número de fila.
 - Fixture `tests/infrastructure/datos/muestra_planta.csv` + tests (carga, columnas faltantes, archivo inexistente, valor inválido, generación negativa, integración con el forecaster).
