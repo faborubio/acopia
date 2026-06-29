@@ -1,0 +1,80 @@
+[project]
+name = "acopia"
+version = "0.1.0"
+description = "Motor de optimización de despacho solar + batería (PV-BESS) para el mercado eléctrico chileno"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "hypothesis>=6.100",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "import-linter>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/acopia"]
+
+# ---------------------------------------------------------------------------
+# Toolchain
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+# N818: "AccionInfactible" es término del dominio (español); no forzamos sufijo Error.
+ignore = ["N818"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+# ---------------------------------------------------------------------------
+# import-linter: fronteras de arquitectura (frontera dura del dominio)
+# ---------------------------------------------------------------------------
+
+[tool.importlinter]
+root_package = "acopia"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "El dominio es puro: no importa otras capas ni librerías pesadas"
+type = "forbidden"
+source_modules = ["acopia.domain"]
+forbidden_modules = [
+    "acopia.application",
+    "acopia.infrastructure",
+    "acopia.interfaces",
+    "torch",
+    "cvxpy",
+    "pyomo",
+    "stable_baselines3",
+    "sqlalchemy",
+    "fastapi",
+    "pydantic",
+]
+
+[[tool.importlinter.contracts]]
+name = "La aplicación no conoce adaptadores ni entrega"
+type = "forbidden"
+source_modules = ["acopia.application"]
+forbidden_modules = ["acopia.infrastructure", "acopia.interfaces"]
