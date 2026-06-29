@@ -19,11 +19,16 @@ class PlanDespacho:
     politica_version: int
     semilla: int
     acciones: tuple[AccionDespacho, ...]
+    energia_vertida_wh: tuple[int, ...]
     ingreso_esperado_mills: int
 
     def __post_init__(self) -> None:
         if not self.acciones:
             raise ValueError("Un plan debe tener al menos una acción")
+        if len(self.energia_vertida_wh) != len(self.acciones):
+            raise ValueError("energia_vertida_wh debe tener una entrada por acción")
+        if any(v < 0 for v in self.energia_vertida_wh):
+            raise ValueError("La energía vertida no puede ser negativa")
 
     def __len__(self) -> int:
         return len(self.acciones)

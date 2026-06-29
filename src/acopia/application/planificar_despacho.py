@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from acopia.domain.entities.bateria import Bateria
 from acopia.domain.entities.escenario import Escenario
 from acopia.domain.entities.estado_bateria import EstadoBateria
 from acopia.domain.entities.plan_despacho import PlanDespacho
+from acopia.domain.entities.planta import Planta
 from acopia.domain.entities.politica_despacho import PoliticaDespacho
 from acopia.domain.entities.rastro import RastroDespacho
 from acopia.domain.ports.puerto_optimizador import PuertoOptimizador
@@ -36,12 +36,12 @@ class PlanificarDespacho:
 
     def ejecutar(
         self,
-        bateria: Bateria,
+        planta: Planta,
         estado_inicial: EstadoBateria,
         escenario: Escenario,
         politica: PoliticaDespacho,
     ) -> ResultadoPlanificacion:
-        plan = self._optimizador.optimizar(bateria, estado_inicial, escenario, politica)
+        plan = self._optimizador.optimizar(planta, estado_inicial, escenario, politica)
         rastro = RastroDespacho(
             politica_id=politica.id,
             politica_version=politica.version,

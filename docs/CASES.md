@@ -71,8 +71,8 @@
 
 ### Curtailment por límite de transmisión
 - **Escenario:** el nodo no puede absorber toda la inyección (congestión); hay un techo de potencia de inyección.
-- **Comportamiento esperado:** preferir cargar la batería antes que verter; respetar el límite de inyección.
-- **Estado:** ⏳ el límite de transmisión aún no se modela (fuera de alcance Fase 1). Es la causa estructural del vertimiento chileno; candidato fuerte para Fase 3.
+- **Comportamiento esperado:** preferir cargar la batería antes que verter; respetar el límite de inyección; verter solo el excedente que no cabe ni en la red ni en la batería.
+- **Cubierto por:** ✅ entidad `Planta` (punto de conexión) + el optimizador modela `vertido` con la restricción de inyección. Tests `test_limite_de_inyeccion_carga_para_evitar_vertimiento` (vierte 20 kWh tras cargar 30 e inyectar 30) y `test_punto_de_conexion_holgado_no_vierte`. *(Pendiente: límite de retiro re-clamp en cuantización; curtailment voluntario a CMg negativo.)*
 
 ### Estado inicial fuera de la banda operativa
 - **Escenario:** el SoC inicial llega por encima de soc_max o por debajo de soc_min (telemetría real, recalibración).

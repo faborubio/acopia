@@ -36,7 +36,7 @@ def crear_app(
     def planificar(peticion: PlanificarRequest) -> PlanDTO:
         try:
             resultado = caso.ejecutar(
-                peticion.bateria.a_dominio(),
+                peticion.planta.a_dominio(),
                 peticion.estado_inicial.a_dominio(),
                 peticion.escenario.a_dominio(),
                 peticion.politica.a_dominio(),

@@ -13,15 +13,18 @@ client = TestClient(crear_app())
 
 def _peticion_arbitraje() -> dict[str, Any]:
     return {
-        "bateria": {
-            "capacidad_wh": 100_000,
-            "potencia_max_carga_w": 50_000,
-            "potencia_max_descarga_w": 50_000,
-            "eficiencia_carga_pct": 100,
-            "eficiencia_descarga_pct": 100,
-            "soc_min_pct": 0,
-            "soc_max_pct": 100,
-            "throughput_garantia_wh": 10_000_000,
+        "planta": {
+            "bateria": {
+                "capacidad_wh": 100_000,
+                "potencia_max_carga_w": 50_000,
+                "potencia_max_descarga_w": 50_000,
+                "eficiencia_carga_pct": 100,
+                "eficiencia_descarga_pct": 100,
+                "soc_min_pct": 0,
+                "soc_max_pct": 100,
+                "throughput_garantia_wh": 10_000_000,
+            },
+            "potencia_max_inyeccion_w": 10_000_000,
         },
         "estado_inicial": {"energia_almacenada_wh": 0, "throughput_acumulado_wh": 0},
         "escenario": {
@@ -53,6 +56,7 @@ def test_planificar_y_consultar() -> None:
     assert cuerpo["ingreso_esperado_mills"] == 49_000
     tipos = [a["tipo"] for a in cuerpo["acciones"]]
     assert tipos == ["CARGAR", "CARGAR", "DESCARGAR", "DESCARGAR"]
+    assert cuerpo["energia_vertida_wh"] == [0, 0, 0, 0]
 
     plan_id = cuerpo["plan_id"]
     consulta = client.get(f"/planes/{plan_id}")

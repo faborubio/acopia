@@ -9,6 +9,13 @@
 
 ## Bitácora
 
+### 2026-06-28 — Curtailment / límite de transmisión (post-Fase 1)
+- Nueva entidad `Planta` (PV + batería + punto de conexión): `potencia_max_inyeccion` / `potencia_max_retiro`. La firma del optimizador, el caso de uso y el REST ahora usan `Planta` (antes `Bateria`).
+- El optimizador LP modela `vertido` (curtailment) con restricción de inyección al nodo; el plan registra `energia_vertida_wh` por intervalo y la `FuncionObjetivo` lo descuenta.
+- Demostrado: la batería carga el exceso de PV para reducir vertimiento y vende en la tarde cara; el sobrante real se vierte (es el problema de los 6 TWh chilenos).
+- Verde: ruff/mypy/import-linter OK · pytest **43 passed**.
+- Deuda nueva: re-clamp del límite de retiro en la cuantización; curtailment voluntario a CMg negativo.
+
 ### 2026-06-28 — Fase 1 cerrada (despacho determinista + REST)
 - Entidades del problema (Escenario, PoliticaDespacho versionada, PlanDespacho, Rastro) + `Precio` (CMg mills/MWh, admite negativos).
 - `OptimizadorLP` predict-then-optimize con **cvxpy + HIGHS**; salida cuantizada a enteros y validada contra `ModeloBateria` → siempre factible. `FuncionObjetivo` da el ingreso auditable.

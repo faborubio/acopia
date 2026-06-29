@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from acopia.domain.entities.bateria import Bateria
 from acopia.domain.entities.escenario import Escenario
 from acopia.domain.entities.estado_bateria import EstadoBateria
 from acopia.domain.entities.plan_despacho import PlanDespacho
+from acopia.domain.entities.planta import Planta
 from acopia.domain.entities.politica_despacho import PoliticaDespacho
 
 
@@ -20,10 +20,10 @@ class PuertoOptimizador(Protocol):
 
     def optimizar(
         self,
-        bateria: Bateria,
+        planta: Planta,
         estado_inicial: EstadoBateria,
         escenario: Escenario,
         politica: PoliticaDespacho,
     ) -> PlanDespacho:
-        """Devuelve un plan factible (toda acción respeta las restricciones de la batería)."""
+        """Devuelve un plan factible (respeta batería y el límite de inyección del nodo)."""
         ...

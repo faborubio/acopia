@@ -13,6 +13,7 @@ from acopia.domain.entities.bateria import Bateria
 from acopia.domain.entities.escenario import Escenario, PuntoPronostico
 from acopia.domain.entities.estado_bateria import EstadoBateria
 from acopia.domain.entities.plan_despacho import PlanDespacho
+from acopia.domain.entities.planta import Planta
 from acopia.domain.entities.politica_despacho import Modo, Objetivo, PoliticaDespacho
 from acopia.domain.value_objects.eficiencia import Eficiencia
 from acopia.domain.value_objects.energia import Energia
@@ -42,6 +43,26 @@ class BateriaDTO(BaseModel):
             soc_min=Soc.de_porcentaje(self.soc_min_pct),
             soc_max=Soc.de_porcentaje(self.soc_max_pct),
             throughput_garantia=Energia(self.throughput_garantia_wh),
+        )
+
+
+class PlantaDTO(BaseModel):
+    bateria: BateriaDTO
+    potencia_max_inyeccion_w: int
+    potencia_max_retiro_w: int | None = None
+    id: str = "planta"
+
+    def a_dominio(self) -> Planta:
+        retiro = (
+            self.potencia_max_retiro_w
+            if self.potencia_max_retiro_w is not None
+            else self.potencia_max_inyeccion_w
+        )
+        return Planta(
+            id=self.id,
+            bateria=self.bateria.a_dominio(),
+            potencia_max_inyeccion=Potencia(self.potencia_max_inyeccion_w),
+            potencia_max_retiro=Potencia(retiro),
         )
 
 
@@ -96,7 +117,7 @@ class PoliticaDTO(BaseModel):
 
 
 class PlanificarRequest(BaseModel):
-    bateria: BateriaDTO
+    planta: PlantaDTO
     estado_inicial: EstadoDTO
     escenario: EscenarioDTO
     politica: PoliticaDTO
@@ -118,6 +139,7 @@ class PlanDTO(BaseModel):
     semilla: int
     ingreso_esperado_mills: int
     acciones: list[AccionDTO]
+    energia_vertida_wh: list[int]
 
     @classmethod
     def desde_dominio(cls, plan: PlanDespacho, plan_id: str | None) -> PlanDTO:
@@ -128,4 +150,5 @@ class PlanDTO(BaseModel):
             semilla=plan.semilla,
             ingreso_esperado_mills=plan.ingreso_esperado_mills,
             acciones=[AccionDTO.desde_dominio(a) for a in plan.acciones],
+            energia_vertida_wh=list(plan.energia_vertida_wh),
         )

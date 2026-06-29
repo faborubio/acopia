@@ -15,8 +15,9 @@ from acopia.domain.value_objects.precio import Precio
 UNA_HORA = Intervalo.de_minutos(60)
 
 
-def _plan(*acciones: AccionDespacho) -> PlanDespacho:
-    return PlanDespacho("p", 1, 0, acciones, ingreso_esperado_mills=0)
+def _plan(*acciones: AccionDespacho, vertido: tuple[int, ...] | None = None) -> PlanDespacho:
+    vertidos = vertido if vertido is not None else tuple(0 for _ in acciones)
+    return PlanDespacho("p", 1, 0, acciones, vertidos, ingreso_esperado_mills=0)
 
 
 def test_ingreso_bruto_descuenta_carga_y_suma_descarga() -> None:
@@ -41,6 +42,14 @@ def test_generacion_se_valoriza_al_cmg() -> None:
     plan = _plan(AccionDespacho.retener())
     # 40 kWh * 100.000 / 1e6 = 4.000 mills
     assert objetivo.ingreso_bruto(plan, escenario, UNA_HORA) == 4_000
+
+
+def test_vertimiento_reduce_la_inyeccion() -> None:
+    objetivo = FuncionObjetivo()
+    escenario = Escenario((PuntoPronostico(Potencia(100_000), Precio(100_000)),))
+    plan = _plan(AccionDespacho.retener(), vertido=(40_000,))
+    # inyectado = 100k - 40k = 60k ; 60k * 100.000 / 1e6 = 6.000 mills
+    assert objetivo.ingreso_bruto(plan, escenario, UNA_HORA) == 6_000
 
 
 def test_costo_ciclado_penaliza_throughput_de_celdas() -> None:

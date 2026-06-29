@@ -1,10 +1,11 @@
 """Función objetivo: ingreso esperado de un plan, calculado de forma pura y auditable.
 
 Convención de inyección a la red por intervalo (Wh, con signo):
-    inyectado = generacion_PV + descarga_AC - carga_AC
+    inyectado = generacion_PV - energia_vertida + descarga_AC - carga_AC
 El ingreso usa el CMg del escenario; la energía retirada de la red (inyección
 negativa, p. ej. cargar desde la red) se valoriza al mismo CMg, así que resta.
-Opcionalmente descuenta el costo de ciclado (degradación) sobre la energía de celdas.
+La **energía vertida** (curtailment) no se inyecta ni se valoriza: reduce la
+inyección. Opcionalmente descuenta el costo de ciclado sobre la energía de celdas.
 """
 
 from __future__ import annotations
@@ -30,14 +31,16 @@ class FuncionObjetivo:
     ) -> int:
         """Ingreso en mills por la energía neta inyectada (sin costo de ciclado)."""
         total = 0
-        for accion, punto in zip(plan.acciones, escenario.puntos, strict=True):
+        for accion, vertido, punto in zip(
+            plan.acciones, plan.energia_vertida_wh, escenario.puntos, strict=True
+        ):
             generacion = punto.generacion.energia_en(resolucion).wh
             carga = descarga = 0
             if accion.tipo is TipoAccion.CARGAR:
                 carga = accion.potencia.energia_en(resolucion).wh
             elif accion.tipo is TipoAccion.DESCARGAR:
                 descarga = accion.potencia.energia_en(resolucion).wh
-            inyectado = generacion + descarga - carga
+            inyectado = generacion - vertido + descarga - carga
             total += punto.cmg.ingreso_por_wh(inyectado)
         return total
 
