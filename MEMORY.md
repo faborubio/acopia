@@ -4,10 +4,19 @@
 
 ## Estado actual
 
-- **Fase:** 1 cerrada + **deuda principal saldada** (SoC terminal, curtailment, estado fuera de banda, horizonte 1). Listo para Fase 2.
-- **Próxima acción (Fase 2):** `PuertoForecaster` + Seq2Seq-LSTM (PyTorch) con escenarios probabilísticos y baseline SARIMAX; snapshot del forecast.
+- **Fase:** 2 en curso — rebanada 1 (andamiaje de forecasting) **completa**. Fase 1 + deuda cerradas.
+- **Próxima acción (Fase 2, rebanada 2):** forecaster SARIMAX (statsmodels) detrás de `PuertoForecaster`, comparado vs el baseline estacional con `MetricasForecast`. Luego rebanada 3: Seq2Seq-LSTM (PyTorch).
 
 ## Bitácora
+
+### 2026-06-29 — Fase 2 rebanada 1 (andamiaje de forecasting)
+- `PuertoForecaster` (puerto) + entidad `Observacion` (serie histórica observada).
+- `MetricasForecast` (servicio puro): RMSE y MAPE (MAPE omite reales nulos, p. ej. PV nocturna).
+- `ForecasterEstacionalNaive` (infra, numpy): baseline estacional-naïve + bootstrap de residuos → escenarios probabilísticos **deterministas** (escenario 0 = puntual). Es el piso a batir por SARIMAX/LSTM (ADR-002).
+- Integración demostrada: forecast → escenario → `OptimizadorLP` → plan factible.
+- Verde: ruff/mypy/import-linter OK · pytest **57 passed** (+10).
+
+### 2026-06-29 — Cierre de deuda pre-Fase 2
 
 ### 2026-06-28 — Cierre de deuda pre-Fase 2
 - **SoC terminal:** `PoliticaDespacho.precio_energia_final_mills_por_mwh` (opcional) valoriza la energía final → no liquida la batería por fin de horizonte.
@@ -57,6 +66,7 @@
 - **Creada la documentación viva:** `CLAUDE.md`, `MEMORY.md`, `docs/AUDIT.md`, `docs/CASES.md`, `docs/TROUBLESHOOTING.md`.
 
 ## Decisiones abiertas / pendientes
+- **Renombrar la carpeta local `ergia` → `acopia`** (solo cosmético; paquete/repo/GitHub ya son `acopia`). Se hace al cerrar la sesión y reabrir VSCode/Claude en la nueva ruta (no se puede en caliente).
 - Confirmar dominios **acopia.ai / acopia.cl** con WHOIS en vivo (búsqueda web no mostró registro, pero no es prueba). `acopia.com` probablemente tomado (hipotecaria usa myacopia.com).
 - **INAPI:** registrar marca en clase software/energía (Niza 9/42/39-40). Homónimos en otros sectores no bloquean: Acopia Networks (IT, muerta tras compra de F5 en 2007), Acopia LLC (hipotecaria US), Acopia Ventures (VC), ACOPIA (ONG). Cero colisión en energía/energytech/Chile.
 - ¿Modelar SSCC con un solo producto (reserva de frecuencia) en fase 4 o varios desde el inicio?
