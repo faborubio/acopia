@@ -62,3 +62,11 @@ def test_backtest_valida_folds_y_horizonte() -> None:
         backtest_rodante(_ForecasterConstante(0, 0), historia, horizonte=0, folds=1)
     with pytest.raises(ValueError, match="folds"):
         backtest_rodante(_ForecasterConstante(0, 0), historia, horizonte=2, folds=0)
+
+
+def test_backtest_un_solo_fold() -> None:
+    # folds=1 con historia justa (> horizonte): un único tramo out-of-sample.
+    historia = _historia_constante(3, gen=30, cmg=0)
+    resultado = backtest_rodante(_ForecasterConstante(30, 0), historia, horizonte=2, folds=1)
+    assert resultado.folds == 1
+    assert resultado.generacion.rmse == 0.0  # pronóstico exacto

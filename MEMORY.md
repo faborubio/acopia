@@ -10,6 +10,18 @@
 
 ## Bitácora
 
+### 2026-07-01 — Endurecimiento con casos borde (pre-cierre Fase 2)
+- **+20 tests de borde** (132 passed total). Forecasters (los 3, parametrizados): generación siempre 0 / serie constante (std=0, la estandarización del LSTM usa `+EPS` → sin NaN ni negativos), **CMg negativo admisible** (curtailment), horizonte 1, LSTM en largo mínimo exacto (ventana+horizonte). Ingesta: `parsear_decimal` negativos, ambigüedad de columna (`_indice_columna` con dos barras que empiezan igual → error claro), `alinear_por_posicion([],[])`. Snapshot: huella de 1 observación (64 hex). Backtest: `folds=1`.
+- **Footgun real corregido:** `leer_serie_xlsx` en formato ancho, si veía **horas pero ninguna fecha** (columna de fecha mal configurada), devolvía **0 filas en silencio**. Ahora **falla con mensaje claro** ("La columna de fecha '…' no tiene valores; ¿es la correcta para --col-ts-cmg?").
+- Verde: ruff/mypy(67)/import-linter OK · pytest **132 passed**.
+- **Backtest anual descartado por costo:** SARIMAX estacionalidad-24 sobre ~8000 puntos en ventana expansiva es impráctico (minutos por fit × folds × 2 series). Para la cifra anual: usar naive+LSTM, o SARIMAX solo con submuestra. El backtest de enero (5 días) sigue siendo la referencia.
+
+### 2026-07-01 — Snapshot as-seen del forecast (ADR-007) + año 2025 completo
+- **ADR-007 (forecast):** `RastroForecast` (dominio) captura la **procedencia reconstruible** de un pronóstico: forecaster (id/versión), horizonte, n_escenarios, semilla, n_observaciones, **huella SHA-256 de la historia as-seen** (`domain/services/huella.py`, stdlib) y los escenarios producidos. `application/pronosticar.py`: `pronosticar_con_rastro` (forecast + rastro atómicos) y `reproduce_el_rastro` (un auditor regenera bit a bit con la misma historia+semilla → verifica determinismo). Complementa al `RastroDespacho` de Fase 1 (que ya guardaba política/estado/escenarios del plan).
+- **Año completo:** `--cmg` ahora acepta **varios archivos** (los concatena y ordena por timestamp). S.GREGORIO 2025 = enero (`21593abb`) + febrero (`99728291`, multi-barra, se toma S.GREGORIO por matching tolerante) + mar-dic (`d5da8a4a`) → **`datos/planta_2025.csv`, 8754 h (364 días)** vs generación TMY. Nota: 8754 vs 8760 (6 h faltan, prob. DST) → `--por-posicion --recortar` puede introducir un desfase ≤6 h en la cola del año (aceptable, 0.07%).
+- Verde: ruff/mypy(66)/import-linter OK · pytest **112 passed** (+8: huella +3, snapshot +4, multi-cmg +1).
+- **Pendiente de esta sesión:** backtest sobre el año completo (corriendo en bg, LSTM lento) para actualizar las cifras del backtest de 5 días de enero.
+
 ### 2026-07-01 — PRIMER entrenamiento sobre datos reales chilenos (hito Fase 2)
 - **Datos reales alineados:** CMg **S.GREGORIO____013, enero 2025** (744 h, XLSX del Coordinador) + generación PV **TMY Antofagasta** (Explorador Solar, `pv` en kWh, planta 1 kW). En `datos/` (git-ignored). Comando: `alinear --por-posicion --recortar --col-hora-cmg Hora --col-cmg "S.GREGORIO" --escala-cmg 1000 --col-ts-gen "Fecha/Hora" --col-gen pv --escala-gen 1000 --fila-encabezado-gen 55`.
 - **Perfil confirmado (la tesis de Acopia en datos reales):** generación pico ~693 W a las 13h; **CMg colapsa a ~3–8k mills/MWh a mediodía** (240 h a CMg=0 por sobreoferta solar) y se dispara a ~97k a las 21h. Ese diferencial es el arbitraje.

@@ -238,6 +238,36 @@ def test_leer_serie_xlsx_salta_filas_de_metadatos(tmp_path: Path) -> None:
     assert serie == [("2025-06-01 12:00", 5_000)]
 
 
+def test_parsear_decimal_negativos() -> None:
+    assert parsear_decimal("-57,79415") == -57.79415  # curtailment: CMg negativo
+    assert parsear_decimal("-1.234,56") == -1234.56
+
+
+def test_parsear_decimal_vacio_es_error() -> None:
+    with pytest.raises(ValueError):
+        parsear_decimal("   ")
+
+
+def test_alinear_por_posicion_vacias_da_vacio() -> None:
+    assert alinear_por_posicion([], []) == []
+
+
+def test_indice_columna_ambiguo_falla(tmp_path: Path) -> None:
+    # Dos barras que empiezan igual: "S.GREGORIO" es ambiguo -> error claro.
+    ruta = tmp_path / "cmg.xlsx"
+    _escribir_xlsx(ruta, [["S.GREGORIO____013", "S.GREGORIO____014"], [1, 2]])
+    with pytest.raises(ValueError, match="no encontrada de forma única"):
+        leer_serie_xlsx(ruta, "S.GREGORIO____013", "S.GREGORIO")
+
+
+def test_leer_serie_xlsx_ancho_sin_fecha_falla(tmp_path: Path) -> None:
+    # Hay horas pero la columna de fecha está vacía -> footgun de configuración.
+    ruta = tmp_path / "cmg.xlsx"
+    _escribir_xlsx(ruta, [["Fecha", "Hora", "cmg"], [None, 0, "50,0"], [None, 1, "60,0"]])
+    with pytest.raises(ValueError, match="no tiene valores"):
+        leer_serie_xlsx(ruta, "Fecha", "cmg", columna_hora="Hora")
+
+
 def test_leer_serie_xlsx_columna_faltante(tmp_path: Path) -> None:
     ruta = tmp_path / "x.xlsx"
     _escribir_xlsx(ruta, [["ts"], ["2025-06-01 12:00"]])
@@ -335,6 +365,32 @@ def test_cli_alinear_acepta_xlsx(tmp_path: Path) -> None:
     assert len(observaciones) == 2
     assert observaciones[1].generacion.w == 12_500  # 12.5 kW -> 12500 W
     assert observaciones[0].cmg.mills_por_mwh == 57_794  # 57,79415 CLP/kWh * 1000
+
+
+def test_cli_alinear_concatena_varios_cmg_ordenados(tmp_path: Path) -> None:
+    # Dos archivos de CMg pasados fuera de orden: se concatenan y ordenan cronológicamente.
+    (tmp_path / "cmg_feb.csv").write_text(
+        "timestamp,cmg_mills_por_mwh\n2025-01-01T05:00,5000\n", encoding="utf-8"
+    )
+    (tmp_path / "cmg_ene.csv").write_text(
+        "timestamp,cmg_mills_por_mwh\n2025-01-01T00:00,9000\n", encoding="utf-8"
+    )
+    (tmp_path / "gen.csv").write_text(
+        "timestamp,generacion_w\n2015-01-01T00:00,0\n2015-01-01T05:00,80000\n", encoding="utf-8"
+    )
+    salida = tmp_path / "planta.csv"
+    codigo = main(
+        [
+            "alinear", "--por-posicion",
+            "--cmg", str(tmp_path / "cmg_feb.csv"), str(tmp_path / "cmg_ene.csv"),
+            "--generacion", str(tmp_path / "gen.csv"),
+            "--salida", str(salida),
+        ]
+    )
+    assert codigo == 0
+    observaciones = GatewayCSV(salida).cargar()
+    assert len(observaciones) == 2
+    assert observaciones[0].cmg.mills_por_mwh == 9000  # 00:00 quedó primero tras ordenar
 
 
 def test_cli_backtest_naive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

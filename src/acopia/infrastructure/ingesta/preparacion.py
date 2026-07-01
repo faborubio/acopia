@@ -172,6 +172,8 @@ def leer_serie_xlsx(
 
         serie: Serie = []
         ultima_fecha = ""  # forward-fill de la fecha (celda combinada por día)
+        alguna_hora = False
+        alguna_fecha = False
         for numero_fila, fila in enumerate(filas, fila_encabezado + 1):
             if i_hora is None:
                 timestamp = _celda_a_texto_ts(fila[i_ts])
@@ -180,9 +182,13 @@ def leer_serie_xlsx(
             else:
                 if fila[i_ts] is not None and str(fila[i_ts]).strip():
                     ultima_fecha = _fecha_texto(fila[i_ts])
+                    alguna_fecha = True
                 celda_hora = fila[i_hora]
-                if celda_hora is None or str(celda_hora).strip() == "" or not ultima_fecha:
-                    continue  # fila en blanco o antes de la primera fecha
+                if celda_hora is None or str(celda_hora).strip() == "":
+                    continue  # fila en blanco al final de la hoja
+                alguna_hora = True
+                if not ultima_fecha:
+                    continue  # filas de hora antes de la primera fecha
                 try:
                     hora = int(_celda_a_decimal(celda_hora))
                 except ValueError as error:
@@ -193,6 +199,11 @@ def leer_serie_xlsx(
             except ValueError as error:
                 raise ValueError(f"Fila {numero_fila}: valor inválido ({error})") from error
             serie.append((timestamp, valor))
+        if i_hora is not None and alguna_hora and not alguna_fecha:
+            raise ValueError(
+                f"La columna de fecha '{columna_ts}' no tiene valores en {ruta.name}; "
+                f"¿es la columna correcta para --col-ts-cmg?"
+            )
     finally:
         libro.close()
     return serie

@@ -103,7 +103,10 @@ def _construir_parser() -> argparse.ArgumentParser:
     cmg.add_argument("--salida", required=True, help="CSV de salida (timestamp,cmg_mills_por_mwh)")
 
     alinear = sub.add_parser("alinear", help="Alinea CMg + generación al CSV de planta")
-    alinear.add_argument("--cmg", required=True, help="CSV o XLSX de CMg")
+    alinear.add_argument(
+        "--cmg", required=True, nargs="+",
+        help="Uno o más CSV/XLSX de CMg (se concatenan y ordenan cronológicamente)",
+    )
     alinear.add_argument(
         "--col-ts-cmg", default="timestamp",
         help="Columna de timestamp; con --col-hora-cmg se trata como columna de fecha",
@@ -173,11 +176,16 @@ def main(argv: list[str] | None = None) -> int:
         escribir_serie_csv(args.salida, serie, "cmg_mills_por_mwh")
         print(f"CMg: {len(serie)} filas escritas en {args.salida}")
     elif args.comando == "alinear":
-        cmg = leer_serie(
-            args.cmg, args.col_ts_cmg, args.col_cmg, args.escala_cmg,
-            hoja=args.hoja_cmg, fila_encabezado=args.fila_encabezado_cmg,
-            columna_hora=args.col_hora_cmg,
-        )
+        cmg = []
+        for ruta_cmg in args.cmg:
+            cmg.extend(
+                leer_serie(
+                    ruta_cmg, args.col_ts_cmg, args.col_cmg, args.escala_cmg,
+                    hoja=args.hoja_cmg, fila_encabezado=args.fila_encabezado_cmg,
+                    columna_hora=args.col_hora_cmg,
+                )
+            )
+        cmg.sort(key=lambda par: par[0])  # cronológico por timestamp ISO
         generacion = leer_serie(
             args.generacion, args.col_ts_gen, args.col_gen, args.escala_gen,
             hoja=args.hoja_gen, fila_encabezado=args.fila_encabezado_gen,

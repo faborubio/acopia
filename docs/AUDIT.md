@@ -39,6 +39,11 @@
 
 > Entrada interim por rebanada. La fase cierra cuando el forecaster se valide sobre datos chilenos reales (no solo sintéticos) y se persista el snapshot as-seen.
 
+**Qué se entregó (snapshot as-seen del forecast — ADR-007, 2026-07-01):**
+- `RastroForecast` (dominio): procedencia reconstruible de un pronóstico (forecaster, horizonte, n_escenarios, semilla, n_observaciones, **huella SHA-256 de la historia**, escenarios). `domain/services/huella.py` (stdlib).
+- `application/pronosticar.py`: `pronosticar_con_rastro` (forecast + snapshot atómicos) y `reproduce_el_rastro` (auditoría de reproducibilidad bit a bit). Complementa `RastroDespacho` (plan) de Fase 1.
+- Año 2025 completo de S.GREGORIO (3 XLSX concatenados vía `--cmg` multi-archivo) → `datos/planta_2025.csv` (8754 h). Backtest sobre el año completo: pendiente (en curso).
+
 **Qué se entregó (datos reales + backtest — 2026-07-01):**
 - **Primer entrenamiento sobre datos reales chilenos:** CMg S.GREGORIO____013 enero 2025 (Coordinador, XLSX) + generación PV TMY Antofagasta (Explorador Solar, CSV) → `datos/planta.csv` (744 h, git-ignored). Pipeline: `leer_serie_csv` con `fila_encabezado` (salta metadatos del TMY) + flag `--recortar`.
 - **Servicio `application/backtest.py`** (`backtest_rodante`): ventana expansiva, orquesta `PuertoForecaster` + `MetricasForecast`, puro (sin infra). Subcomando `acopia-datos backtest` cablea los 3 forecasters (LSTM opcional si hay torch).
