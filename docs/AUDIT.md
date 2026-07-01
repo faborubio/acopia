@@ -35,6 +35,41 @@
 
 ---
 
+## Fase 2 — Forecaster + escenarios — en curso — 2026-06-29
+
+> Entrada interim por rebanada. La fase cierra cuando el forecaster se valide sobre datos chilenos reales (no solo sintéticos) y se persista el snapshot as-seen.
+
+**Qué se entregó (datos reales + backtest — 2026-07-01):**
+- **Primer entrenamiento sobre datos reales chilenos:** CMg S.GREGORIO____013 enero 2025 (Coordinador, XLSX) + generación PV TMY Antofagasta (Explorador Solar, CSV) → `datos/planta.csv` (744 h, git-ignored). Pipeline: `leer_serie_csv` con `fila_encabezado` (salta metadatos del TMY) + flag `--recortar`.
+- **Servicio `application/backtest.py`** (`backtest_rodante`): ventana expansiva, orquesta `PuertoForecaster` + `MetricasForecast`, puro (sin infra). Subcomando `acopia-datos backtest` cablea los 3 forecasters (LSTM opcional si hay torch).
+- **Resultado (backtest rodante 5 días, 24h, promedios):**
+  - gen RMSE: LSTM 51.3 · naive 57.9 · SARIMAX 66.8
+  - **CMg RMSE: LSTM 27.4k · SARIMAX 34.9k · naive 42.8k → LSTM −36% vs naive, −21% vs SARIMAX.** CMg MAPE: LSTM 31.8% · SARIMAX 41% · naive 50.8%.
+  - Lectura honesta: el LSTM gana en el target difícil (CMg). El −36% roza el ~34% del paper, pero con reservas fuertes (1 mes, 1 barra, generación TMY, 5 folds): **direccional, no validación**.
+
+**Qué se entregó (ingesta — lector XLSX):**
+- `leer_serie_xlsx` (openpyxl, opcional `acopia[ingesta]`) + despacho por extensión en `leer_serie`: `acopia-datos alinear` acepta .csv o .xlsx (formato real del Coordinador / Explorador Solar). Maneja celdas nativas (datetime, número) y texto con coma chilena; `--hoja-*`/`--fila-encabezado-*` saltan metadatos.
+- Nuevo flag `--escala-cmg` (CLP/kWh → mills/MWh con 1000); cierra un gap que un test destapó (antes solo había `--escala-gen`).
+- **Desbloquea la ingesta de datos reales:** falta solo que el operador descargue los archivos.
+
+**Qué se entregó (rebanada 3 — Seq2Seq-LSTM):**
+- `ForecasterSeq2SeqLSTM` (PyTorch, CPU) detrás del mismo `PuertoForecaster`: encoder-decoder LSTM sobre 2 features estandarizadas (generación PV, CMg), entrenado por llamada (full-batch Adam + MSE, teacher forcing). Escenario 0 = pronóstico puntual; los demás suman `N(0, σ)` con σ de los residuos de entrenamiento. **Determinista** (semillas PyTorch + numpy, sin shuffle, CPU).
+- `torch` como dependencia **opcional** (`[forecasting]`); rueda CPU. El núcleo determinista no la requiere. Frontera dura intacta: `import-linter` sigue prohibiendo `torch` en `domain/`.
+- Rebanadas previas (1, 1b, 1c, 2): baseline estacional-naïve, gateway de ingesta CSV, CLI `acopia-datos`, SARIMAX. Ver bitácora en `MEMORY.md`.
+
+**Verificación (todo en verde):** ruff OK · mypy --strict 61 files 0 issues · import-linter 2 KEPT · pytest **104 passed** (LSTM +7, XLSX +6, formato ancho/CSV +6, backtest +4).
+- Tests del LSTM: forma/cantidad, **determinismo** (misma semilla → mismos escenarios), generación no negativa, historia insuficiente, escenario-0-sin-ruido, **learnability** (reproduce una señal periódica, RMSE < 5 sobre pico de 90) y **comparación**: bate al estacional-naïve en RMSE sobre datos con tendencia.
+- Comparación 3-vías (set sintético período-4 + tendencia, RMSE gen / CMg): naive `8.00 / 2000` · SARIMAX `33.3 / 14283` · **LSTM `1.12 / 420`**.
+
+**Vista de halcón (qué quedó débil):**
+- **Honestidad de datos:** sin datos chilenos reales el LSTM se entrena sobre sintéticos. Esta rebanada entrega **arquitectura + pipeline determinista**, NO la cifra del paper (~34% menos RMSE). El objetivo verificable de ADR-002 ("batir al baseline en nuestro set") solo es honestamente exigible donde el baseline tiene sesgo estructural (tendencia); ahí el LSTM gana robustamente.
+- **SARIMAX es sensible a la especificación de orden:** el `33.3` de arriba es con un orden sin componente estacional; con el orden adecuado mejora. La comparación seria contra SARIMAX se hará sobre datos reales, no sobre este set.
+- **Entrenamiento por llamada:** consistente con SARIMAX, pero costoso para horizontes largos / históricos grandes. Un modo entrenar-una-vez / persistir-pesos es deuda futura.
+- **Generación de escenarios por ruido gaussiano** sobre el punto, no muestreo del espacio latente (MC dropout / ensembles) — suficiente para el MVP.
+
+**Deuda generada:** validar sobre datos chilenos reales; persistencia de pesos (no re-entrenar por llamada); snapshot as-seen del forecast (ADR-007, pendiente para cierre de fase); comparación honesta LSTM vs SARIMAX sobre datos reales.
+**Sign-off:** (pendiente — fase en curso).
+
 ## Fase 1 — Despacho determinista — cerrada — 2026-06-28
 
 **Qué se entregó:**

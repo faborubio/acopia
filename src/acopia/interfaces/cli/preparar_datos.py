@@ -8,10 +8,16 @@ Subcomandos:
   del Coordinador v4 (reescribir si se quiere la vía API).
 - ``alinear``: cruza el CMg con la generación PV exportada del Explorador Solar y
   escribe el CSV ``timestamp,generacion_w,cmg_mills_por_mwh`` para `GatewayCSV`.
-  Usa ``--por-posicion`` cuando las series son de años distintos.
+  Acepta entradas **.csv o .xlsx** (despacha por extensión); para Excel usa
+  ``--hoja-*``/``--fila-encabezado-*`` si hay metadatos sobre la tabla.
+  Usa ``--por-posicion`` (con ``--recortar`` si difieren en largo) para series de años distintos.
+- ``backtest``: compara forecasters (naive, SARIMAX, LSTM) sobre un CSV de planta con
+  un backtest rodante y reporta RMSE/MAPE por serie (comparación honesta de ADR-002).
 
 La generación PV no tiene API horaria pública: se exporta desde solar.minenergia.cl
 y se pasa a ``alinear`` (con --col-gen/--escala-gen según el formato exportado).
+Las descargas del Coordinador vienen en .xlsx; leerlas requiere el extra
+``acopia[ingesta]`` (openpyxl).
 """
 
 from __future__ import annotations
@@ -21,6 +27,11 @@ import json
 import urllib.request
 from typing import Any
 
+from acopia.application.backtest import backtest_rodante
+from acopia.domain.ports.puerto_forecaster import PuertoForecaster
+from acopia.infrastructure.forecasting.forecaster_estacional import ForecasterEstacionalNaive
+from acopia.infrastructure.forecasting.forecaster_sarimax import ForecasterSARIMAX
+from acopia.infrastructure.ingesta.gateway_csv import GatewayCSV
 from acopia.infrastructure.ingesta.preparacion import (
     Serie,
     alinear_por_posicion,
@@ -28,8 +39,44 @@ from acopia.infrastructure.ingesta.preparacion import (
     escribir_csv_planta,
     escribir_serie_csv,
     extraer_cmg,
-    leer_serie_csv,
+    leer_serie,
 )
+
+
+def _construir_forecasters(
+    nombres: list[str], estacionalidad: int
+) -> list[tuple[str, PuertoForecaster]]:
+    """Instancia los forecasters pedidos; omite el LSTM si torch no está instalado."""
+    forecasters: list[tuple[str, PuertoForecaster]] = []
+    for crudo in nombres:
+        nombre = crudo.strip().lower()
+        if nombre == "naive":
+            forecasters.append((nombre, ForecasterEstacionalNaive(estacionalidad)))
+        elif nombre == "sarimax":
+            forecasters.append(
+                (
+                    nombre,
+                    ForecasterSARIMAX(
+                        estacionalidad,
+                        orden=(2, 0, 1),
+                        orden_estacional=(1, 0, 0, estacionalidad),
+                    ),
+                )
+            )
+        elif nombre == "lstm":
+            try:
+                from acopia.infrastructure.forecasting.forecaster_lstm import (
+                    ForecasterSeq2SeqLSTM,
+                )
+            except ImportError:
+                print("(LSTM omitido: torch no instalado; usa el extra acopia[forecasting])")
+                continue
+            forecasters.append(
+                (nombre, ForecasterSeq2SeqLSTM(ventana=2 * estacionalidad, hidden=32, epocas=250))
+            )
+        else:
+            raise ValueError(f"Modelo desconocido: {nombre!r} (usa naive, sarimax, lstm)")
+    return forecasters
 
 
 def _descargar_cmg(url: str, campo_ts: str, campo_valor: str, escala: float) -> Serie:
@@ -56,20 +103,65 @@ def _construir_parser() -> argparse.ArgumentParser:
     cmg.add_argument("--salida", required=True, help="CSV de salida (timestamp,cmg_mills_por_mwh)")
 
     alinear = sub.add_parser("alinear", help="Alinea CMg + generación al CSV de planta")
-    alinear.add_argument("--cmg", required=True, help="CSV de CMg")
-    alinear.add_argument("--col-ts-cmg", default="timestamp")
-    alinear.add_argument("--col-cmg", default="cmg_mills_por_mwh")
-    alinear.add_argument("--generacion", required=True, help="CSV de generación PV exportado")
+    alinear.add_argument("--cmg", required=True, help="CSV o XLSX de CMg")
+    alinear.add_argument(
+        "--col-ts-cmg", default="timestamp",
+        help="Columna de timestamp; con --col-hora-cmg se trata como columna de fecha",
+    )
+    alinear.add_argument(
+        "--col-hora-cmg", default=None,
+        help="Columna de hora (0..23) del formato ancho del Coordinador; combina Fecha+Hora",
+    )
+    alinear.add_argument(
+        "--col-cmg", default="cmg_mills_por_mwh",
+        help="Columna de CMg (en el formato ancho, el nombre de la barra, ej. 'S.GREGORIO')",
+    )
+    alinear.add_argument(
+        "--escala-cmg", type=float, default=1.0,
+        help="Factor a mills/MWh (1000 si el CMg viene en CLP/kWh, como el Coordinador)",
+    )
+    alinear.add_argument("--hoja-cmg", default=None, help="Pestaña del XLSX de CMg")
+    alinear.add_argument(
+        "--fila-encabezado-cmg", type=int, default=1, help="Fila del encabezado en el XLSX de CMg"
+    )
+    alinear.add_argument("--generacion", required=True, help="CSV o XLSX de generación PV")
     alinear.add_argument("--col-ts-gen", default="timestamp")
+    alinear.add_argument(
+        "--col-hora-gen", default=None, help="Columna de hora (0..23) si la generación es ancha"
+    )
     alinear.add_argument("--col-gen", default="generacion_w")
     alinear.add_argument("--escala-gen", type=float, default=1.0, help="Factor a W (1000 si es kW)")
+    alinear.add_argument("--hoja-gen", default=None, help="Pestaña del XLSX de generación")
+    alinear.add_argument(
+        "--fila-encabezado-gen", type=int, default=1,
+        help="Fila del encabezado de la generación (54 filas de metadatos en el TMY -> 55)",
+    )
     alinear.add_argument(
         "--por-posicion",
         action="store_true",
         help="Une por posición (hora a hora) en vez de por timestamp; usa el ts del CMg. "
         "Necesario si las series son de años distintos (CMg real + Explorador Solar).",
     )
+    alinear.add_argument(
+        "--recortar",
+        action="store_true",
+        help="Con --por-posicion, recorta ambas series al largo menor (p. ej. CMg de 1 mes "
+        "vs generación de 1 año). Opt-in para no ocultar desfases silenciosos.",
+    )
     alinear.add_argument("--salida", required=True, help="CSV de planta (lo consume GatewayCSV)")
+
+    backtest = sub.add_parser(
+        "backtest", help="Compara forecasters (RMSE/MAPE) sobre un CSV de planta"
+    )
+    backtest.add_argument("--planta", required=True, help="CSV de planta (timestamp,gen,cmg)")
+    backtest.add_argument("--horizonte", type=int, default=24, help="Pasos a pronosticar por fold")
+    backtest.add_argument("--folds", type=int, default=5, help="Nº de tramos out-of-sample")
+    backtest.add_argument(
+        "--estacionalidad", type=int, default=24, help="Período estacional (24 = diario horario)"
+    )
+    backtest.add_argument(
+        "--modelos", default="naive,sarimax,lstm", help="Lista separada por comas"
+    )
     return parser
 
 
@@ -81,14 +173,40 @@ def main(argv: list[str] | None = None) -> int:
         escribir_serie_csv(args.salida, serie, "cmg_mills_por_mwh")
         print(f"CMg: {len(serie)} filas escritas en {args.salida}")
     elif args.comando == "alinear":
-        cmg = leer_serie_csv(args.cmg, args.col_ts_cmg, args.col_cmg)
-        generacion = leer_serie_csv(args.generacion, args.col_ts_gen, args.col_gen, args.escala_gen)
+        cmg = leer_serie(
+            args.cmg, args.col_ts_cmg, args.col_cmg, args.escala_cmg,
+            hoja=args.hoja_cmg, fila_encabezado=args.fila_encabezado_cmg,
+            columna_hora=args.col_hora_cmg,
+        )
+        generacion = leer_serie(
+            args.generacion, args.col_ts_gen, args.col_gen, args.escala_gen,
+            hoja=args.hoja_gen, fila_encabezado=args.fila_encabezado_gen,
+            columna_hora=args.col_hora_gen,
+        )
+        if args.recortar:
+            n = min(len(generacion), len(cmg))
+            generacion, cmg = generacion[:n], cmg[:n]
         if args.por_posicion:
             filas = alinear_por_posicion(generacion, cmg)
         else:
             filas = alinear_series(generacion, cmg)
         escribir_csv_planta(args.salida, filas)
         print(f"Alineadas {len(filas)} filas en {args.salida}")
+    elif args.comando == "backtest":
+        observaciones = GatewayCSV(args.planta).cargar()
+        forecasters = _construir_forecasters(args.modelos.split(","), args.estacionalidad)
+        print(
+            f"Backtest rodante: {args.folds} folds x {args.horizonte}h "
+            f"sobre {len(observaciones)} observaciones"
+        )
+        print(f"{'modelo':9s} | gen RMSE | gen MAPE | cmg RMSE | cmg MAPE")
+        print("-" * 60)
+        for nombre, forecaster in forecasters:
+            r = backtest_rodante(forecaster, observaciones, args.horizonte, args.folds)
+            print(
+                f"{nombre:9s} | {r.generacion.rmse:8.1f} | {r.generacion.mape:7.1f}% "
+                f"| {r.cmg.rmse:8.0f} | {r.cmg.mape:7.1f}%"
+            )
     return 0
 
 

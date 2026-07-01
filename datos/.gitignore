@@ -1,0 +1,5 @@
+# Datasets reales (CMg del Coordinador, generación del Explorador Solar) y sus
+# derivados: no se versionan (pueden ser grandes / con condiciones de uso).
+# Esta carpeta se mantiene en el repo solo por este .gitignore.
+*
+!.gitignore

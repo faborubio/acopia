@@ -17,6 +17,11 @@ dependencies = [
 acopia-datos = "acopia.interfaces.cli.preparar_datos:main"
 
 [project.optional-dependencies]
+# Seq2Seq-LSTM (ADR-002). Pesado y opcional: el núcleo determinista no lo requiere.
+# Instalar la rueda CPU desde https://download.pytorch.org/whl/cpu para evitar CUDA.
+forecasting = ["torch>=2.2"]
+# Lectura de .xlsx (descargas del Coordinador / Explorador Solar) en `acopia-datos`.
+ingesta = ["openpyxl>=3.1"]
 dev = [
     "pytest>=8.2",
     "hypothesis>=6.100",
@@ -54,7 +59,10 @@ files = ["src", "tests"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["cvxpy", "cvxpy.*", "statsmodels", "statsmodels.*"]
+module = [
+    "cvxpy", "cvxpy.*", "statsmodels", "statsmodels.*",
+    "torch", "torch.*", "openpyxl", "openpyxl.*",
+]
 ignore_missing_imports = true
 follow_imports = "skip"
 
