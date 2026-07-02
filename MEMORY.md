@@ -5,11 +5,18 @@
 ## Estado actual
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
-- **Próxima acción (Fase 3 — "Robustez + backtest", SAD §13):** optimización sobre escenarios (estocástico, deuda de Fase 1) + reoptimización intradía + la deuda del cierre de Fase 2 — en particular **re-evaluación del LSTM por régimen/tuning por volumen** (ganó en enero, perdió en el anual con config fija) y SARIMAX anual viable.
+- **Fase 3 en curso — rebanada 1 (optimizador estocástico ADR-004) completa.** Próxima acción: **rebanada 2 — `BacktestPolitica`** (forecast as-seen → plan → ejecutar contra lo real → ingreso realizado vs esperado vs foresight perfecto, sobre `planta_2025.csv`). Luego rebanada 3: `ReoptimizarIntradia` (desvíos sintéticos, §6.2). Deuda de Fase 2 pendiente: re-evaluación LSTM por régimen/tuning por volumen, SARIMAX anual viable.
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año completo, 8754 h) — CMg real S.GREGORIO 2025 + generación TMY Antofagasta. Git-ignored; se regeneran con `acopia-datos alinear` (comando exacto en bitácora 2026-07-01).
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-02 — Fase 3 rebanada 1 (optimizador estocástico de dos etapas, ADR-004)
+- `PuertoOptimizador` gana **`optimizar_escenarios(planta, estado, escenarios, politica)`**; `OptimizadorLP.optimizar` ahora delega con un solo escenario (equivalencia verificada por test).
+- **Formulación de dos etapas:** primera etapa = programa de la batería (carga/descarga/energía, común a todos los escenarios, here-and-now); segunda etapa = **vertido de recurso por escenario**. Restricciones de inyección/retiro del nodo exigidas en *todos* los escenarios → la robustez emerge de la factibilidad conjunta. Objetivo: ingreso esperado ponderado por `probabilidad_bp` (pesos normalizados) − ciclado + valor terminal.
+- **Ingreso esperado del plan:** cada escenario se valoriza con *su* vertido de recurso cuantizado (mismas acciones); promedio ponderado en aritmética entera (`suma_ponderada // suma_pesos`). El plan reporta el vertido del **escenario 0** (referencia puntual).
+- **Test clave (la foto de ADR-004):** planta sin retiro de red (`retiro_max=0`), PV barato en hora 0 en el caso medio pero **0 en el escenario pesimista** → el plan del caso medio CARGA (inejecutable si sale nublado); el estocástico RETIENE. Robustez ante el colapso/incertidumbre del PV demostrada.
+- Verde: ruff/mypy(68)/import-linter OK · pytest **139 passed** (+7).
 
 ### 2026-07-02 — CIERRE de Fase 2 (backtest anual + sign-off)
 - **Backtest anual** (7 folds × 24 h sobre `planta_2025.csv`, 8754 h): naive gen RMSE **36.2** / CMg RMSE **26.2k** / CMg MAPE **39.1%** · LSTM (config CLI fija) gen 62.4 / CMg 38.9k / MAPE 46.1%. Corrió ~35 min el LSTM (1.2 s/época sobre ~8700 obs).

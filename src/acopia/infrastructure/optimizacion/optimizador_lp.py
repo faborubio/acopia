@@ -1,9 +1,16 @@
 """Optimizador de despacho predict-then-optimize determinista (LP, cvxpy + HIGHS).
 
-Resuelve el arbitraje de CMg de una planta PV-BESS sobre un único escenario
-(caso medio), respetando el **límite de inyección del punto de conexión** y
-modelando el **vertimiento** (curtailment): cuando la generación más la descarga
-superan el techo del nodo, el excedente se almacena o se vierte.
+Resuelve el arbitraje de CMg de una planta PV-BESS, respetando el **límite de
+inyección del punto de conexión** y modelando el **vertimiento** (curtailment):
+cuando la generación más la descarga superan el techo del nodo, el excedente se
+almacena o se vierte.
+
+Soporta dos modos detrás del mismo puerto:
+- ``optimizar``: un único escenario (caso medio), el modo Fase 1.
+- ``optimizar_escenarios``: **estocástico de dos etapas** (ADR-004). El programa de
+  la batería (carga/descarga) es la decisión here-and-now común; el vertido es el
+  recurso por escenario. Factible en todos los escenarios; maximiza el ingreso
+  esperado ponderado por ``probabilidad_bp``.
 
 El problema es lineal: con eficiencia < 1 y costo de ciclado >= 0 el óptimo nunca
 carga y descarga a la vez. El plan continuo se **cuantiza a unidades enteras** y
@@ -43,11 +50,24 @@ class OptimizadorLP:
         escenario: Escenario,
         politica: PoliticaDespacho,
     ) -> PlanDespacho:
+        return self.optimizar_escenarios(planta, estado_inicial, (escenario,), politica)
+
+    def optimizar_escenarios(
+        self,
+        planta: Planta,
+        estado_inicial: EstadoBateria,
+        escenarios: tuple[Escenario, ...],
+        politica: PoliticaDespacho,
+    ) -> PlanDespacho:
+        if not escenarios:
+            raise ValueError("Se requiere al menos un escenario")
         horizonte = politica.horizonte_intervalos
-        if len(escenario) != horizonte:
-            raise ValueError(
-                f"El escenario tiene {len(escenario)} puntos; la política espera {horizonte}"
-            )
+        for indice, escenario in enumerate(escenarios):
+            if len(escenario) != horizonte:
+                raise ValueError(
+                    f"El escenario {indice} tiene {len(escenario)} puntos; "
+                    f"la política espera {horizonte}"
+                )
         e0 = estado_inicial.energia_almacenada.wh
         if not planta.bateria.energia_min.wh <= e0 <= planta.bateria.energia_max.wh:
             raise ValueError(
@@ -55,36 +75,68 @@ class OptimizadorLP:
                 f"[{planta.bateria.energia_min.wh}, {planta.bateria.energia_max.wh}] Wh"
             )
 
-        carga_ac, descarga_ac, vertido_ac = self._resolver(
-            planta, estado_inicial, escenario, politica
+        carga_ac, descarga_ac, vertidos_ac = self._resolver(
+            planta, estado_inicial, escenarios, politica
         )
-        acciones, vertidos = self._a_plan_factible(
-            planta, estado_inicial, escenario, politica, carga_ac, descarga_ac, vertido_ac
+        # La referencia del plan (acciones y vertido reportado) es el escenario 0
+        # (pronóstico puntual); el recurso de los demás escenarios entra al ingreso.
+        acciones, vertidos_por_escenario = self._a_plan_factible(
+            planta, estado_inicial, escenarios, politica, carga_ac, descarga_ac, vertidos_ac
         )
 
-        plan_provisional = PlanDespacho(
-            politica_id=politica.id,
-            politica_version=politica.version,
-            semilla=politica.semilla,
-            acciones=acciones,
-            energia_vertida_wh=vertidos,
-            ingreso_esperado_mills=0,
-        )
-        ingreso = self._objetivo.ingreso_bruto(
-            plan_provisional, escenario, politica.resolucion
-        ) - self._objetivo.costo_ciclado(
-            plan_provisional,
-            politica,
-            planta.bateria.eficiencia_carga,
-            planta.bateria.eficiencia_descarga,
+        ingreso = self._ingreso_esperado(
+            planta, escenarios, politica, acciones, vertidos_por_escenario
         )
         return PlanDespacho(
             politica_id=politica.id,
             politica_version=politica.version,
             semilla=politica.semilla,
             acciones=acciones,
-            energia_vertida_wh=vertidos,
+            energia_vertida_wh=vertidos_por_escenario[0],
             ingreso_esperado_mills=ingreso,
+        )
+
+    def _ingreso_esperado(
+        self,
+        planta: Planta,
+        escenarios: tuple[Escenario, ...],
+        politica: PoliticaDespacho,
+        acciones: tuple[AccionDespacho, ...],
+        vertidos_por_escenario: tuple[tuple[int, ...], ...],
+    ) -> int:
+        """Ingreso esperado (mills): promedio ponderado por probabilidad_bp, menos ciclado.
+
+        Cada escenario se valoriza con **su propio** vertido de recurso (mismas
+        acciones de batería). Aritmética entera para el determinismo.
+        """
+        plan_base = PlanDespacho(
+            politica_id=politica.id,
+            politica_version=politica.version,
+            semilla=politica.semilla,
+            acciones=acciones,
+            energia_vertida_wh=vertidos_por_escenario[0],
+            ingreso_esperado_mills=0,
+        )
+        suma_ponderada = 0
+        suma_pesos = 0
+        for escenario, vertidos in zip(escenarios, vertidos_por_escenario, strict=True):
+            plan_escenario = PlanDespacho(
+                politica_id=politica.id,
+                politica_version=politica.version,
+                semilla=politica.semilla,
+                acciones=acciones,
+                energia_vertida_wh=vertidos,
+                ingreso_esperado_mills=0,
+            )
+            bruto = self._objetivo.ingreso_bruto(plan_escenario, escenario, politica.resolucion)
+            suma_ponderada += escenario.probabilidad_bp * bruto
+            suma_pesos += escenario.probabilidad_bp
+        esperado_bruto = suma_ponderada // suma_pesos
+        return esperado_bruto - self._objetivo.costo_ciclado(
+            plan_base,
+            politica,
+            planta.bateria.eficiencia_carga,
+            planta.bateria.eficiencia_descarga,
         )
 
     # ------------------------------------------------------------------ #
@@ -95,9 +147,10 @@ class OptimizadorLP:
         self,
         planta: Planta,
         estado_inicial: EstadoBateria,
-        escenario: Escenario,
+        escenarios: tuple[Escenario, ...],
         politica: PoliticaDespacho,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
+        """LP de dos etapas: batería here-and-now, vertido de recurso por escenario."""
         bateria = planta.bateria
         t = politica.horizonte_intervalos
         resolucion = politica.resolucion
@@ -115,26 +168,17 @@ class OptimizadorLP:
             bateria.throughput_garantia.wh - estado_inicial.throughput_acumulado.wh
         )
 
-        generacion = np.array(
-            [p.generacion.energia_en(resolucion).wh for p in escenario.puntos], dtype=float
-        )
-        precio = np.array([p.cmg.mills_por_mwh for p in escenario.puntos], dtype=float) / 1e6
-
+        # Primera etapa: el programa de la batería, común a todos los escenarios.
         carga = cp.Variable(t, nonneg=True)
         descarga = cp.Variable(t, nonneg=True)
-        vertido = cp.Variable(t, nonneg=True)
         energia = cp.Variable(t)
         celdas = ef_c * carga + descarga / ef_d  # energía a través de las celdas
-        inyectado = generacion - vertido + descarga - carga
 
         restricciones = [
             carga <= cmax,
             descarga <= dmax,
-            vertido <= generacion,  # solo se puede verter PV existente
             energia >= e_min,
             energia <= e_max,
-            inyectado <= iny_max,  # límite de transmisión del punto de conexión
-            inyectado >= -retiro_max,
             cp.sum(celdas) <= throughput_budget,
         ]
         restricciones.append(energia[0] == e0 + ef_c * carga[0] - descarga[0] / ef_d)
@@ -143,8 +187,30 @@ class OptimizadorLP:
                 energia[k] == energia[k - 1] + ef_c * carga[k] - descarga[k] / ef_d
             )
 
+        # Segunda etapa (recurso): vertido por escenario; factibilidad en todos.
+        pesos = np.array([e.probabilidad_bp for e in escenarios], dtype=float)
+        pesos = pesos / pesos.sum()
+        vertidos: list[cp.Variable] = []
+        ingreso_esperado: cp.Expression = cp.Constant(0)
+        for escenario, peso in zip(escenarios, pesos, strict=True):
+            generacion = np.array(
+                [p.generacion.energia_en(resolucion).wh for p in escenario.puntos], dtype=float
+            )
+            precio = (
+                np.array([p.cmg.mills_por_mwh for p in escenario.puntos], dtype=float) / 1e6
+            )
+            vertido = cp.Variable(t, nonneg=True)
+            inyectado = generacion - vertido + descarga - carga
+            restricciones += [
+                vertido <= generacion,  # solo se puede verter PV existente
+                inyectado <= iny_max,  # límite de transmisión del punto de conexión
+                inyectado >= -retiro_max,
+            ]
+            ingreso_esperado = ingreso_esperado + peso * (precio @ inyectado)
+            vertidos.append(vertido)
+
         costo = (politica.costo_ciclado_mills_por_mwh / 1e6) * cp.sum(celdas)
-        objetivo = precio @ inyectado - costo
+        objetivo = ingreso_esperado - costo
         if politica.precio_energia_final_mills_por_mwh is not None:
             # Valoriza la energía disponible que queda al final (evita liquidarla por
             # el solo hecho de que el horizonte termina).
@@ -156,7 +222,11 @@ class OptimizadorLP:
         if problema.status not in (cp.OPTIMAL, cp.OPTIMAL_INACCURATE):
             raise RuntimeError(f"El optimizador no encontró solución: status={problema.status}")
 
-        return np.asarray(carga.value), np.asarray(descarga.value), np.asarray(vertido.value)
+        return (
+            np.asarray(carga.value),
+            np.asarray(descarga.value),
+            [np.asarray(v.value) for v in vertidos],
+        )
 
     # ------------------------------------------------------------------ #
     # Cuantización entera + factibilidad garantizada por el dominio
@@ -166,18 +236,19 @@ class OptimizadorLP:
         self,
         planta: Planta,
         estado_inicial: EstadoBateria,
-        escenario: Escenario,
+        escenarios: tuple[Escenario, ...],
         politica: PoliticaDespacho,
         carga_ac: np.ndarray,
         descarga_ac: np.ndarray,
-        vertido_ac: np.ndarray,
-    ) -> tuple[tuple[AccionDespacho, ...], tuple[int, ...]]:
+        vertidos_ac: list[np.ndarray],
+    ) -> tuple[tuple[AccionDespacho, ...], tuple[tuple[int, ...], ...]]:
+        """Cuantiza las acciones (comunes) y el vertido de recurso de cada escenario."""
         bateria = planta.bateria
         resolucion = politica.resolucion
         segundos = resolucion.segundos
         iny_max_wh = planta.potencia_max_inyeccion.energia_en(resolucion).wh
         acciones: list[AccionDespacho] = []
-        vertidos: list[int] = []
+        vertidos: list[list[int]] = [[] for _ in escenarios]
         estado = estado_inicial
 
         for k in range(politica.horizonte_intervalos):
@@ -199,17 +270,18 @@ class OptimizadorLP:
 
             estado = self._modelo.aplicar(bateria, estado, accion, resolucion)
             acciones.append(accion)
-            vertidos.append(
-                self._vertido_factible(
-                    escenario.puntos[k].generacion.energia_en(resolucion).wh,
-                    accion,
-                    resolucion,
-                    iny_max_wh,
-                    round(float(vertido_ac[k])),
+            for s, escenario in enumerate(escenarios):
+                vertidos[s].append(
+                    self._vertido_factible(
+                        escenario.puntos[k].generacion.energia_en(resolucion).wh,
+                        accion,
+                        resolucion,
+                        iny_max_wh,
+                        round(float(vertidos_ac[s][k])),
+                    )
                 )
-            )
 
-        return tuple(acciones), tuple(vertidos)
+        return tuple(acciones), tuple(tuple(v) for v in vertidos)
 
     @staticmethod
     def _vertido_factible(

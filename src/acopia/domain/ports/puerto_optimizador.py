@@ -16,7 +16,7 @@ from acopia.domain.entities.politica_despacho import PoliticaDespacho
 
 
 class PuertoOptimizador(Protocol):
-    """Genera un plan de despacho factible para un escenario y una política dados."""
+    """Genera un plan de despacho factible para escenarios y una política dados."""
 
     def optimizar(
         self,
@@ -26,4 +26,20 @@ class PuertoOptimizador(Protocol):
         politica: PoliticaDespacho,
     ) -> PlanDespacho:
         """Devuelve un plan factible (respeta batería y el límite de inyección del nodo)."""
+        ...
+
+    def optimizar_escenarios(
+        self,
+        planta: Planta,
+        estado_inicial: EstadoBateria,
+        escenarios: tuple[Escenario, ...],
+        politica: PoliticaDespacho,
+    ) -> PlanDespacho:
+        """Optimización estocástica de dos etapas sobre escenarios (ADR-004).
+
+        El programa de la batería es la decisión **here-and-now** (común a todos los
+        escenarios); el vertido es el **recurso** por escenario. El plan devuelto es
+        factible en *todos* los escenarios y su ingreso es el **esperado**, ponderado
+        por ``probabilidad_bp``. Con un solo escenario equivale a ``optimizar``.
+        """
         ...
