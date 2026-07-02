@@ -21,6 +21,7 @@ class PlanDespacho:
     acciones: tuple[AccionDespacho, ...]
     energia_vertida_wh: tuple[int, ...]
     ingreso_esperado_mills: int
+    reserva_w: tuple[int, ...] = ()  # banda SSCC comprometida por intervalo (W); () = sin SSCC
 
     def __post_init__(self) -> None:
         if not self.acciones:
@@ -29,6 +30,10 @@ class PlanDespacho:
             raise ValueError("energia_vertida_wh debe tener una entrada por acción")
         if any(v < 0 for v in self.energia_vertida_wh):
             raise ValueError("La energía vertida no puede ser negativa")
+        if self.reserva_w and len(self.reserva_w) != len(self.acciones):
+            raise ValueError("reserva_w debe tener una entrada por acción (o ser vacía)")
+        if any(r < 0 for r in self.reserva_w):
+            raise ValueError("La reserva no puede ser negativa")
 
     def __len__(self) -> int:
         return len(self.acciones)

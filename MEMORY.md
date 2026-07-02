@@ -6,12 +6,19 @@
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
 - **Fase 3 CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0–3 completas. **Hallazgo estrella:** el LSTM entrenado régimen-local (ventana 720 obs) recupera la ventaja en el anual — CMg RMSE **20.3k vs 26.2k naive (−23%)**; con historial completo perdía (38.9k). La régimen-dependencia de Fase 2 quedó explicada y revertida.
-- **Próxima acción (Fase 4 — "Co-optimización SSCC + Capa MCP", SAD §13, el MVP):** co-optimizar arbitraje + servicios complementarios (reserva de frecuencia) en una sola función objetivo; capa MCP read-only (FastMCP) para interrogar/simular el plan; modo DRL opcional medido contra el baseline. Decisión abierta del SAD: ¿un solo producto SSCC o varios? (recomendación: uno, reserva de frecuencia).
+- **Fase 4 en curso — rebanada 1 (co-optimización SSCC, §3.0) completa.** Decisión abierta RESUELTA: **un solo producto** — reserva de frecuencia, banda simétrica, pago por disponibilidad, precio constante en la política (settlement de activación fuera del MVP, documentado). Próxima acción: **rebanada 2 — capa MCP read-only (FastMCP)**: interrogar el plan ("¿por qué cargaste a mediodía?"), explicar y simular. Luego rebanada 3: modo DRL opcional medido contra el baseline (experimento, ADR-005).
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año, 8754 h). Comandos reproducibles: `acopia-datos backtest --ventana-entrenamiento 720` y `acopia-datos backtest-politica` (ver bitácora).
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año completo, 8754 h) — CMg real S.GREGORIO 2025 + generación TMY Antofagasta. Git-ignored; se regeneran con `acopia-datos alinear` (comando exacto en bitácora 2026-07-01).
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-02 — Fase 4 rebanada 1 (co-optimización arbitraje + SSCC, §3.0)
+- **`ReservaFrecuencia`** (dominio, `producto_sscc.py`): banda simétrica ±R remunerada por **disponibilidad** (precio constante en la política; el settlement de activación queda fuera del MVP). `PoliticaDespacho.reserva: ReservaFrecuencia | None` (None = arbitraje puro). `PlanDespacho.reserva_w: tuple[int,...] = ()` (retrocompatible). `FuncionObjetivo.ingreso_reserva`.
+- **LP co-optimizado (una sola función objetivo):** restricciones de banda = headroom de potencia (±R sobre el setpoint), de **energía** (sostener la activación el intervalo completo: `energia − R/ef_d ≥ e_min`, `energia + ef_c·R ≤ e_max`) y de **inyección/retiro en todos los escenarios** (`inyectado ± R` dentro del nodo). Cuantización con clamp conservador (`_reserva_factible`: nunca agranda la banda del LP).
+- **El LP me ganó dos veces (comportamientos emergentes correctos, ahora fijados por test):** (1) **compra energía de la red para vender disponibilidad** cuando la banda paga más que el spot (arbitraje entre productos); (2) con `retiro=0`, absorber la activación a bajar **exige estar inyectando ≥ R** → reparte óptimamente entre vender y respaldar banda (d=R=5k en el test). Moraleja de testing: fijar invariantes, no expectativas ingenuas.
+- Tests (+7): sin SSCC no hay banda; banda máxima con valor terminal neutralizando liquidación; los dos emergentes; la banda compite con el arbitraje (ingreso total sube, `R + setpoint ≤ potencia`); ingreso = bruto + disponibilidad; determinismo con SSCC.
+- Verde: ruff/mypy(78)/import-linter OK · pytest **170 passed**.
 
 ### 2026-07-02 — CIERRE de Fase 3 (ventana régimen-local + deuda saldada + sign-off)
 - **`ventana_entrenamiento`** en `backtest_rodante` + flag CLI `--ventana-entrenamiento`: entrena con las últimas N obs (régimen-local) en vez de todo el histórico. Una sola pieza saldó ambas deudas de Fase 2.

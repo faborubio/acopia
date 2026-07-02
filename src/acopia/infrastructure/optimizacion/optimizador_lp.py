@@ -75,17 +75,18 @@ class OptimizadorLP:
                 f"[{planta.bateria.energia_min.wh}, {planta.bateria.energia_max.wh}] Wh"
             )
 
-        carga_ac, descarga_ac, vertidos_ac = self._resolver(
+        carga_ac, descarga_ac, vertidos_ac, reserva_ac = self._resolver(
             planta, estado_inicial, escenarios, politica
         )
         # La referencia del plan (acciones y vertido reportado) es el escenario 0
         # (pronóstico puntual); el recurso de los demás escenarios entra al ingreso.
-        acciones, vertidos_por_escenario = self._a_plan_factible(
-            planta, estado_inicial, escenarios, politica, carga_ac, descarga_ac, vertidos_ac
+        acciones, vertidos_por_escenario, reserva_w = self._a_plan_factible(
+            planta, estado_inicial, escenarios, politica,
+            carga_ac, descarga_ac, vertidos_ac, reserva_ac,
         )
 
         ingreso = self._ingreso_esperado(
-            planta, escenarios, politica, acciones, vertidos_por_escenario
+            planta, escenarios, politica, acciones, vertidos_por_escenario, reserva_w
         )
         return PlanDespacho(
             politica_id=politica.id,
@@ -94,6 +95,7 @@ class OptimizadorLP:
             acciones=acciones,
             energia_vertida_wh=vertidos_por_escenario[0],
             ingreso_esperado_mills=ingreso,
+            reserva_w=reserva_w,
         )
 
     def _ingreso_esperado(
@@ -103,11 +105,13 @@ class OptimizadorLP:
         politica: PoliticaDespacho,
         acciones: tuple[AccionDespacho, ...],
         vertidos_por_escenario: tuple[tuple[int, ...], ...],
+        reserva_w: tuple[int, ...],
     ) -> int:
-        """Ingreso esperado (mills): promedio ponderado por probabilidad_bp, menos ciclado.
+        """Ingreso esperado (mills): energía ponderada por probabilidad_bp + reserva - ciclado.
 
         Cada escenario se valoriza con **su propio** vertido de recurso (mismas
-        acciones de batería). Aritmética entera para el determinismo.
+        acciones de batería); la disponibilidad SSCC es determinista (no depende del
+        escenario). Aritmética entera para el determinismo.
         """
         plan_base = PlanDespacho(
             politica_id=politica.id,
@@ -116,6 +120,7 @@ class OptimizadorLP:
             acciones=acciones,
             energia_vertida_wh=vertidos_por_escenario[0],
             ingreso_esperado_mills=0,
+            reserva_w=reserva_w,
         )
         suma_ponderada = 0
         suma_pesos = 0
@@ -132,11 +137,15 @@ class OptimizadorLP:
             suma_ponderada += escenario.probabilidad_bp * bruto
             suma_pesos += escenario.probabilidad_bp
         esperado_bruto = suma_ponderada // suma_pesos
-        return esperado_bruto - self._objetivo.costo_ciclado(
-            plan_base,
-            politica,
-            planta.bateria.eficiencia_carga,
-            planta.bateria.eficiencia_descarga,
+        return (
+            esperado_bruto
+            + self._objetivo.ingreso_reserva(plan_base, politica)
+            - self._objetivo.costo_ciclado(
+                plan_base,
+                politica,
+                planta.bateria.eficiencia_carga,
+                planta.bateria.eficiencia_descarga,
+            )
         )
 
     # ------------------------------------------------------------------ #
@@ -149,8 +158,15 @@ class OptimizadorLP:
         estado_inicial: EstadoBateria,
         escenarios: tuple[Escenario, ...],
         politica: PoliticaDespacho,
-    ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
-        """LP de dos etapas: batería here-and-now, vertido de recurso por escenario."""
+    ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray], np.ndarray | None]:
+        """LP de dos etapas: batería here-and-now, vertido de recurso por escenario.
+
+        Con SSCC (``politica.reserva``) añade la banda simétrica R por intervalo:
+        headroom de potencia (±R sobre el setpoint), de energía (activación sostenida
+        el intervalo completo) y de inyección/retiro en **todos** los escenarios. La
+        disponibilidad se remunera en el objetivo: arbitraje y reserva compiten por
+        la misma batería en una sola función objetivo (§3.0).
+        """
         bateria = planta.bateria
         t = politica.horizonte_intervalos
         resolucion = politica.resolucion
@@ -187,6 +203,19 @@ class OptimizadorLP:
                 energia[k] == energia[k - 1] + ef_c * carga[k] - descarga[k] / ef_d
             )
 
+        # SSCC: banda simétrica de reserva de frecuencia (co-optimizada, §3.0).
+        reserva: cp.Variable | None = None
+        if politica.reserva is not None:
+            banda_max_wh = politica.reserva.banda_max_w * resolucion.segundos / 3600
+            reserva = cp.Variable(t, nonneg=True)
+            restricciones += [
+                reserva <= banda_max_wh,
+                (descarga - carga) + reserva <= dmax,  # headroom para activar a subir
+                (carga - descarga) + reserva <= cmax,  # headroom para activar a bajar
+                energia - reserva / ef_d >= e_min,  # energía para sostener la activación
+                energia + ef_c * reserva <= e_max,
+            ]
+
         # Segunda etapa (recurso): vertido por escenario; factibilidad en todos.
         pesos = np.array([e.probabilidad_bp for e in escenarios], dtype=float)
         pesos = pesos / pesos.sum()
@@ -206,11 +235,20 @@ class OptimizadorLP:
                 inyectado <= iny_max,  # límite de transmisión del punto de conexión
                 inyectado >= -retiro_max,
             ]
+            if reserva is not None:
+                # La activación (±R) también debe caber en el punto de conexión.
+                restricciones += [
+                    inyectado + reserva <= iny_max,
+                    inyectado - reserva >= -retiro_max,
+                ]
             ingreso_esperado = ingreso_esperado + peso * (precio @ inyectado)
             vertidos.append(vertido)
 
         costo = (politica.costo_ciclado_mills_por_mwh / 1e6) * cp.sum(celdas)
         objetivo = ingreso_esperado - costo
+        if politica.reserva is not None and reserva is not None:
+            precio_reserva = politica.reserva.precio_disponibilidad_mills_por_mwh / 1e6
+            objetivo = objetivo + precio_reserva * cp.sum(reserva)
         if politica.precio_energia_final_mills_por_mwh is not None:
             # Valoriza la energía disponible que queda al final (evita liquidarla por
             # el solo hecho de que el horizonte termina).
@@ -226,6 +264,7 @@ class OptimizadorLP:
             np.asarray(carga.value),
             np.asarray(descarga.value),
             [np.asarray(v.value) for v in vertidos],
+            np.asarray(reserva.value) if reserva is not None else None,
         )
 
     # ------------------------------------------------------------------ #
@@ -241,14 +280,16 @@ class OptimizadorLP:
         carga_ac: np.ndarray,
         descarga_ac: np.ndarray,
         vertidos_ac: list[np.ndarray],
-    ) -> tuple[tuple[AccionDespacho, ...], tuple[tuple[int, ...], ...]]:
-        """Cuantiza las acciones (comunes) y el vertido de recurso de cada escenario."""
+        reserva_ac: np.ndarray | None,
+    ) -> tuple[tuple[AccionDespacho, ...], tuple[tuple[int, ...], ...], tuple[int, ...]]:
+        """Cuantiza acciones (comunes), vertido de recurso por escenario y banda SSCC."""
         bateria = planta.bateria
         resolucion = politica.resolucion
         segundos = resolucion.segundos
         iny_max_wh = planta.potencia_max_inyeccion.energia_en(resolucion).wh
         acciones: list[AccionDespacho] = []
         vertidos: list[list[int]] = [[] for _ in escenarios]
+        reservas: list[int] = []
         estado = estado_inicial
 
         for k in range(politica.horizonte_intervalos):
@@ -270,18 +311,84 @@ class OptimizadorLP:
 
             estado = self._modelo.aplicar(bateria, estado, accion, resolucion)
             acciones.append(accion)
+            vertidos_k: list[int] = []
             for s, escenario in enumerate(escenarios):
-                vertidos[s].append(
-                    self._vertido_factible(
-                        escenario.puntos[k].generacion.energia_en(resolucion).wh,
-                        accion,
-                        resolucion,
-                        iny_max_wh,
-                        round(float(vertidos_ac[s][k])),
+                vertido = self._vertido_factible(
+                    escenario.puntos[k].generacion.energia_en(resolucion).wh,
+                    accion,
+                    resolucion,
+                    iny_max_wh,
+                    round(float(vertidos_ac[s][k])),
+                )
+                vertidos[s].append(vertido)
+                vertidos_k.append(vertido)
+            if reserva_ac is not None and politica.reserva is not None:
+                reservas.append(
+                    self._reserva_factible(
+                        planta, politica, estado, accion, escenarios, vertidos_k, k,
+                        round(float(reserva_ac[k])),
                     )
                 )
 
-        return tuple(acciones), tuple(tuple(v) for v in vertidos)
+        return tuple(acciones), tuple(tuple(v) for v in vertidos), tuple(reservas)
+
+    def _reserva_factible(
+        self,
+        planta: Planta,
+        politica: PoliticaDespacho,
+        estado_despues: EstadoBateria,
+        accion: AccionDespacho,
+        escenarios: tuple[Escenario, ...],
+        vertidos_k: list[int],
+        k: int,
+        reserva_lp_wh: int,
+    ) -> int:
+        """Banda entera (W) que respeta todos los headrooms tras la cuantización.
+
+        Clamp conservador: potencia (±R sobre el setpoint), energía (activación
+        sostenida el intervalo), e inyección/retiro en todos los escenarios con los
+        vertidos ya cuantizados. Nunca aumenta la banda del LP, solo la recorta.
+        """
+        bateria = planta.bateria
+        resolucion = politica.resolucion
+        assert politica.reserva is not None  # invariante garantizada por el llamador
+        banda_max_wh = (politica.reserva.banda_max_w * resolucion.segundos) // 3600
+
+        carga_wh = descarga_wh = 0
+        if accion.tipo is TipoAccion.CARGAR:
+            carga_wh = accion.potencia.energia_en(resolucion).wh
+        elif accion.tipo is TipoAccion.DESCARGAR:
+            descarga_wh = accion.potencia.energia_en(resolucion).wh
+
+        dmax_wh = bateria.potencia_max_descarga.energia_en(resolucion).wh
+        cmax_wh = bateria.potencia_max_carga.energia_en(resolucion).wh
+        r_wh = min(
+            reserva_lp_wh,
+            banda_max_wh,
+            dmax_wh - (descarga_wh - carga_wh),  # headroom de potencia a subir
+            cmax_wh - (carga_wh - descarga_wh),  # headroom de potencia a bajar
+        )
+
+        # Headroom de energía tras la acción (activación sostenida el intervalo).
+        e_despues = estado_despues.energia_almacenada.wh
+        ef_c_bp = bateria.eficiencia_carga.puntos_base
+        ef_d_bp = bateria.eficiencia_descarga.puntos_base
+        r_wh = min(
+            r_wh,
+            ((e_despues - bateria.energia_min.wh) * ef_d_bp) // _BASE,
+            ((bateria.energia_max.wh - e_despues) * _BASE) // ef_c_bp,
+        )
+
+        # Headroom de inyección/retiro en todos los escenarios (vertidos cuantizados).
+        iny_max_wh = planta.potencia_max_inyeccion.energia_en(resolucion).wh
+        retiro_max_wh = planta.potencia_max_retiro.energia_en(resolucion).wh
+        for escenario, vertido in zip(escenarios, vertidos_k, strict=True):
+            generacion_wh = escenario.puntos[k].generacion.energia_en(resolucion).wh
+            inyectado = generacion_wh - vertido + descarga_wh - carga_wh
+            r_wh = min(r_wh, iny_max_wh - inyectado, inyectado + retiro_max_wh)
+
+        r_wh = max(0, r_wh)
+        return (r_wh * 3600) // politica.resolucion.segundos
 
     @staticmethod
     def _vertido_factible(

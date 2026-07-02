@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from acopia.domain.entities.producto_sscc import ReservaFrecuencia
 from acopia.domain.value_objects.intervalo import Intervalo
 
 
@@ -34,7 +35,9 @@ class PoliticaDespacho:
     al final del horizonte (evita el "efecto fin de horizonte": liquidar la batería
     solo porque el horizonte termina). Si es ``None``, la energía final no se valoriza.
 
-    La co-optimización con SSCC (``productos_sscc``) llega en la Fase 4.
+    ``reserva`` habilita la co-optimización con SSCC (§3.0, Fase 4): una banda
+    simétrica de reserva de frecuencia que compite con el arbitraje por la misma
+    potencia y energía de la batería. ``None`` = arbitraje puro (fases 1-3).
     """
 
     id: str
@@ -46,6 +49,7 @@ class PoliticaDespacho:
     modo: Modo = Modo.PREDICT_THEN_OPTIMIZE
     costo_ciclado_mills_por_mwh: int = 0
     precio_energia_final_mills_por_mwh: int | None = None
+    reserva: ReservaFrecuencia | None = None
 
     def __post_init__(self) -> None:
         if self.version < 1:

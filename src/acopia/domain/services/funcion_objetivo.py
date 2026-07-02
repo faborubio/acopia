@@ -44,6 +44,20 @@ class FuncionObjetivo:
             total += punto.cmg.ingreso_por_wh(inyectado)
         return total
 
+    def ingreso_reserva(self, plan: PlanDespacho, politica: PoliticaDespacho) -> int:
+        """Remuneración por disponibilidad de la banda SSCC comprometida (mills).
+
+        Pago por tener el headroom (±R) disponible, se active o no (§3.0). Si la
+        política no co-optimiza SSCC o el plan no comprometió banda, es 0.
+        """
+        if politica.reserva is None or not plan.reserva_w:
+            return 0
+        precio = politica.reserva.precio_disponibilidad_mills_por_mwh
+        reserva_wh = sum(
+            (r * politica.resolucion.segundos) // 3600 for r in plan.reserva_w
+        )
+        return (precio * reserva_wh) // _WH_POR_MWH
+
     def costo_ciclado(
         self,
         plan: PlanDespacho,
