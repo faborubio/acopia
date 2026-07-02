@@ -22,6 +22,8 @@ acopia-datos = "acopia.interfaces.cli.preparar_datos:main"
 forecasting = ["torch>=2.2"]
 # Lectura de .xlsx (descargas del Coordinador / Explorador Solar) en `acopia-datos`.
 ingesta = ["openpyxl>=3.1"]
+# Capa MCP read-only + simulación (Fase 4): `python -m acopia.interfaces.mcp.servidor`.
+mcp = ["fastmcp>=3"]
 dev = [
     "pytest>=8.2",
     "hypothesis>=6.100",

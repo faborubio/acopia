@@ -6,12 +6,20 @@
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
 - **Fase 3 CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0–3 completas. **Hallazgo estrella:** el LSTM entrenado régimen-local (ventana 720 obs) recupera la ventaja en el anual — CMg RMSE **20.3k vs 26.2k naive (−23%)**; con historial completo perdía (38.9k). La régimen-dependencia de Fase 2 quedó explicada y revertida.
-- **Fase 4 en curso — rebanada 1 (co-optimización SSCC, §3.0) completa.** Decisión abierta RESUELTA: **un solo producto** — reserva de frecuencia, banda simétrica, pago por disponibilidad, precio constante en la política (settlement de activación fuera del MVP, documentado). Próxima acción: **rebanada 2 — capa MCP read-only (FastMCP)**: interrogar el plan ("¿por qué cargaste a mediodía?"), explicar y simular. Luego rebanada 3: modo DRL opcional medido contra el baseline (experimento, ADR-005).
+- **Fase 4 en curso — rebanadas 1 (co-optimización SSCC, §3.0) y 2 (capa MCP, §5) completas.** Próxima acción: **rebanada 3 — modo DRL opcional** (ADR-005, experimento medido contra el baseline; incluye la herramienta MCP `comparar_modos`). Ojo disco: **3.6 GB libres** — stable-baselines3 + gymnasium caben pero justo; considerar liberar espacio antes.
+- **Deuda conocida de la capa MCP:** el rastro no persiste la batería/resolución (el servidor las recibe por inyección); persistir la política completa junto al rastro es deuda para la fase de persistencia real (Timescale).
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año, 8754 h). Comandos reproducibles: `acopia-datos backtest --ventana-entrenamiento 720` y `acopia-datos backtest-politica` (ver bitácora).
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año completo, 8754 h) — CMg real S.GREGORIO 2025 + generación TMY Antofagasta. Git-ignored; se regeneran con `acopia-datos alinear` (comando exacto en bitácora 2026-07-01).
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-02 — Fase 4 rebanada 2 (capa MCP read-only + explicabilidad, §5)
+- **`ExplicadorDespacho`** (dominio, puro): explica cada intervalo desde el plan + rastro as-seen — acción, CMg y su **percentil dentro del horizonte** (bp), trayectoria de SoC reconstruida con `ModeloBateria`, vertido, banda SSCC y un `motivo` determinista ("Carga: el CMg es de los más baratos…"; CMg ≤ 0 → "inyectar pagaría por generar"; RETENER con banda → "mantiene headroom para la banda SSCC").
+- **`simular_escenario`** (aplicación): parte del escenario as-seen del rastro (ADR-007), aplica `cmg_por_intervalo` y/o `factor_generacion_bp` y re-optimiza **sin persistir**; devuelve comparación de ingresos (delta).
+- **Servidor MCP** (`interfaces/mcp/servidor.py`, FastMCP 3): herramientas del SAD §5 — `consultar_despacho`, `explicar_despacho(plan_id, intervalo?)`, `simular(cmg_por_intervalo, factor_generacion_pct)`. **Read-only + simulación** (decisión de seguridad del SAD). `comparar_modos` queda para la rebanada DRL. `crear_servidor(...)` por inyección; `python -m acopia.interfaces.mcp.servidor` = demo stdio con día chileno típico sembrado (duck curve, CMg 0 a mediodía).
+- Tests end-to-end con el **cliente in-memory de FastMCP** (asyncio.run, sin plugins): lista de herramientas, consulta, "por qué cargó" y simulación de CMg 0 en la punta (delta < 0, sin tocar el plan original). `fastmcp>=3` como extra `[mcp]`.
+- Verde: ruff/mypy(85)/import-linter OK · pytest **183 passed** (+13).
 
 ### 2026-07-02 — Fase 4 rebanada 1 (co-optimización arbitraje + SSCC, §3.0)
 - **`ReservaFrecuencia`** (dominio, `producto_sscc.py`): banda simétrica ±R remunerada por **disponibilidad** (precio constante en la política; el settlement de activación queda fuera del MVP). `PoliticaDespacho.reserva: ReservaFrecuencia | None` (None = arbitraje puro). `PlanDespacho.reserva_w: tuple[int,...] = ()` (retrocompatible). `FuncionObjetivo.ingreso_reserva`.
