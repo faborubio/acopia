@@ -5,11 +5,17 @@
 ## Estado actual
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
-- **Fase 3 en curso — rebanada 1 (optimizador estocástico ADR-004) completa.** Próxima acción: **rebanada 2 — `BacktestPolitica`** (forecast as-seen → plan → ejecutar contra lo real → ingreso realizado vs esperado vs foresight perfecto, sobre `planta_2025.csv`). Luego rebanada 3: `ReoptimizarIntradia` (desvíos sintéticos, §6.2). Deuda de Fase 2 pendiente: re-evaluación LSTM por régimen/tuning por volumen, SARIMAX anual viable.
+- **Fase 3 en curso — rebanadas 1 (optimizador estocástico ADR-004) y 2 (`BacktestPolitica` §6.3) completas.** Próxima acción: **rebanada 3 — `ReoptimizarIntradia`** (recalcular el resto del día ante desvíos, con desvíos sintéticos, §6.2). Deuda de Fase 2 pendiente: re-evaluación LSTM por régimen/tuning por volumen, SARIMAX anual viable.
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año completo, 8754 h) — CMg real S.GREGORIO 2025 + generación TMY Antofagasta. Git-ignored; se regeneran con `acopia-datos alinear` (comando exacto en bitácora 2026-07-01).
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-02 — Fase 3 rebanada 2 (BacktestPolitica + SimuladorEjecucion, §6.3)
+- **`SimuladorEjecucion`** (dominio, puro): confronta un plan con el día **real**. Reglas conservadoras auditables: acción infactible para la batería → RETENER; carga que exigiría retirar de la red más allá del límite (el PV real no alcanza) → RETENER; vertido realizado = max(planificado, excedente obligatorio) acotado al PV real. Reporta `acciones_reparadas` (intervalos donde el plan era inejecutable).
+- **`backtest_politica`** (aplicación): por fold (día): forecast as-seen → `optimizar_escenarios` → ejecutar contra lo real → `ingreso_esperado` vs `ingreso_realizado` vs `ingreso_foresight` (optimizar el día real = techo) + `captura_vs_foresight_bp`. **El estado de la batería se arrastra entre folds.** Test clave: forecast perfecto ⇒ realizado == esperado == foresight (captura 100%); forecast engañoso ⇒ reparaciones y captura < 100%.
+- **CLI `acopia-datos backtest-politica`** (planta modelo parametrizable; default retiro=0 → solo PV+BESS). **Resultado real** (`planta_2025.csv`, 5 folds, naive): 1 escenario → captura **93.3%**, 12 reparadas · 3 escenarios → 87.8%, 12 · **5 escenarios → 100.4%, 6 reparadas**. La historia de ADR-004 en datos reales: más escenarios ⇒ planes que fallan menos en ejecución. OJO: captura >100% es legítima (el foresight es por-día sin valor terminal; la política ejecutada arrastra energía entre días). Números direccionales (planta 1 kW TMY, 5 días, naive).
+- Verde: ruff/mypy(72)/import-linter OK · pytest **148 passed** (+9).
 
 ### 2026-07-02 — Fase 3 rebanada 1 (optimizador estocástico de dos etapas, ADR-004)
 - `PuertoOptimizador` gana **`optimizar_escenarios(planta, estado, escenarios, politica)`**; `OptimizadorLP.optimizar` ahora delega con un solo escenario (equivalencia verificada por test).

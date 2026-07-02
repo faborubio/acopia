@@ -165,6 +165,25 @@ def _construir_parser() -> argparse.ArgumentParser:
     backtest.add_argument(
         "--modelos", default="naive,sarimax,lstm", help="Lista separada por comas"
     )
+
+    politica = sub.add_parser(
+        "backtest-politica",
+        help="Backtest de la política de despacho: forecast -> plan -> ejecución real",
+    )
+    politica.add_argument("--planta", required=True, help="CSV de planta (timestamp,gen,cmg)")
+    politica.add_argument("--folds", type=int, default=5, help="Días out-of-sample")
+    politica.add_argument("--horizonte", type=int, default=24)
+    politica.add_argument("--estacionalidad", type=int, default=24)
+    politica.add_argument("--modelo", default="naive", help="naive | sarimax | lstm")
+    politica.add_argument("--escenarios", type=int, default=1, help="N para el estocástico")
+    politica.add_argument("--semilla", type=int, default=0)
+    politica.add_argument("--capacidad-wh", type=int, default=2_000, help="Batería (Wh)")
+    politica.add_argument("--potencia-w", type=int, default=500, help="Carga/descarga (W)")
+    politica.add_argument("--iny-w", type=int, default=1_000_000, help="Techo de inyección (W)")
+    politica.add_argument(
+        "--retiro-w", type=int, default=0,
+        help="Retiro máx. de red (W); 0 = solo PV+BESS (default, típico solar)",
+    )
     return parser
 
 
@@ -215,7 +234,73 @@ def main(argv: list[str] | None = None) -> int:
                 f"{nombre:9s} | {r.generacion.rmse:8.1f} | {r.generacion.mape:7.1f}% "
                 f"| {r.cmg.rmse:8.0f} | {r.cmg.mape:7.1f}%"
             )
+    elif args.comando == "backtest-politica":
+        _ejecutar_backtest_politica(args)
     return 0
+
+
+def _ejecutar_backtest_politica(args: argparse.Namespace) -> None:
+    from acopia.application.backtest_politica import backtest_politica
+    from acopia.domain.entities.bateria import Bateria
+    from acopia.domain.entities.estado_bateria import EstadoBateria
+    from acopia.domain.entities.planta import Planta
+    from acopia.domain.entities.politica_despacho import Modo, Objetivo, PoliticaDespacho
+    from acopia.domain.value_objects.eficiencia import Eficiencia
+    from acopia.domain.value_objects.energia import Energia
+    from acopia.domain.value_objects.intervalo import Intervalo
+    from acopia.domain.value_objects.potencia import Potencia
+    from acopia.domain.value_objects.soc import Soc
+    from acopia.infrastructure.optimizacion.optimizador_lp import OptimizadorLP
+
+    observaciones = GatewayCSV(args.planta).cargar()
+    forecasters = _construir_forecasters([args.modelo], args.estacionalidad)
+    if not forecasters:
+        raise SystemExit(1)
+    nombre, forecaster = forecasters[0]
+
+    bateria = Bateria(
+        capacidad=Energia(args.capacidad_wh),
+        potencia_max_carga=Potencia(args.potencia_w),
+        potencia_max_descarga=Potencia(args.potencia_w),
+        eficiencia_carga=Eficiencia.de_porcentaje(95),
+        eficiencia_descarga=Eficiencia.de_porcentaje(95),
+        soc_min=Soc.de_porcentaje(0),
+        soc_max=Soc.de_porcentaje(100),
+        throughput_garantia=Energia(1_000_000_000),
+    )
+    planta = Planta("planta-modelo", bateria, Potencia(args.iny_w), Potencia(args.retiro_w))
+    politica = PoliticaDespacho(
+        id="arbitraje-backtest",
+        version=1,
+        objetivo=Objetivo.MAX_INGRESO,
+        horizonte_intervalos=args.horizonte,
+        resolucion=Intervalo.de_minutos(60),
+        semilla=args.semilla,
+        modo=Modo.PREDICT_THEN_OPTIMIZE,
+        costo_ciclado_mills_por_mwh=0,
+    )
+    resultado = backtest_politica(
+        forecaster,
+        OptimizadorLP(),
+        planta,
+        EstadoBateria(Energia(0)),
+        observaciones,
+        politica,
+        folds=args.folds,
+        n_escenarios=args.escenarios,
+        semilla=args.semilla,
+    )
+    reparadas = sum(f.acciones_reparadas for f in resultado.folds)
+    vertida = sum(f.energia_vertida_wh for f in resultado.folds)
+    print(
+        f"Backtest de política: {args.folds} folds x {args.horizonte}h · "
+        f"forecaster={nombre} · escenarios={args.escenarios} · retiro={args.retiro_w} W"
+    )
+    print(f"  ingreso esperado  : {resultado.ingreso_esperado_mills:>12,} mills")
+    print(f"  ingreso realizado : {resultado.ingreso_realizado_mills:>12,} mills")
+    print(f"  ingreso foresight : {resultado.ingreso_foresight_mills:>12,} mills")
+    print(f"  captura vs techo  : {resultado.captura_vs_foresight_bp / 100:>11.1f} %")
+    print(f"  vertido realizado : {vertida:>12,} Wh · acciones reparadas: {reparadas}")
 
 
 if __name__ == "__main__":
