@@ -165,6 +165,11 @@ def _construir_parser() -> argparse.ArgumentParser:
     backtest.add_argument(
         "--modelos", default="naive,sarimax,lstm", help="Lista separada por comas"
     )
+    backtest.add_argument(
+        "--ventana-entrenamiento", type=int, default=None,
+        help="Entrenar solo con las últimas N observaciones (régimen-local); "
+        "por defecto usa todo el histórico (ventana expansiva)",
+    )
 
     politica = sub.add_parser(
         "backtest-politica",
@@ -229,7 +234,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'modelo':9s} | gen RMSE | gen MAPE | cmg RMSE | cmg MAPE")
         print("-" * 60)
         for nombre, forecaster in forecasters:
-            r = backtest_rodante(forecaster, observaciones, args.horizonte, args.folds)
+            r = backtest_rodante(
+                forecaster, observaciones, args.horizonte, args.folds,
+                ventana_entrenamiento=args.ventana_entrenamiento,
+            )
             print(
                 f"{nombre:9s} | {r.generacion.rmse:8.1f} | {r.generacion.mape:7.1f}% "
                 f"| {r.cmg.rmse:8.0f} | {r.cmg.mape:7.1f}%"

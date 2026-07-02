@@ -64,6 +64,48 @@ def test_backtest_valida_folds_y_horizonte() -> None:
         backtest_rodante(_ForecasterConstante(0, 0), historia, horizonte=2, folds=0)
 
 
+class _ForecasterEspia(_ForecasterConstante):
+    """Registra el largo de la historia con que se le pide pronosticar."""
+
+    def __init__(self) -> None:
+        super().__init__(generacion=0, cmg=0)
+        self.largos: list[int] = []
+
+    def pronosticar(
+        self,
+        historia: tuple[Observacion, ...],
+        horizonte: int,
+        n_escenarios: int,
+        semilla: int,
+    ) -> tuple[Escenario, ...]:
+        self.largos.append(len(historia))
+        return super().pronosticar(historia, horizonte, n_escenarios, semilla)
+
+
+def test_ventana_de_entrenamiento_recorta_la_historia() -> None:
+    historia = _historia_constante(10, gen=10, cmg=100)
+    espia = _ForecasterEspia()
+    backtest_rodante(espia, historia, horizonte=2, folds=2, ventana_entrenamiento=3)
+    # fold 0 entrena con obs[:6] recortado a 3; fold 1 con obs[:8] recortado a 3
+    assert espia.largos == [3, 3]
+
+
+def test_ventana_expansiva_por_defecto() -> None:
+    historia = _historia_constante(10, gen=10, cmg=100)
+    espia = _ForecasterEspia()
+    backtest_rodante(espia, historia, horizonte=2, folds=2)
+    assert espia.largos == [6, 8]
+
+
+def test_ventana_invalida_es_error() -> None:
+    historia = _historia_constante(10, gen=10, cmg=100)
+    with pytest.raises(ValueError, match="ventana_entrenamiento"):
+        backtest_rodante(
+            _ForecasterConstante(0, 0), historia, horizonte=2, folds=1,
+            ventana_entrenamiento=0,
+        )
+
+
 def test_backtest_un_solo_fold() -> None:
     # folds=1 con historia justa (> horizonte): un único tramo out-of-sample.
     historia = _historia_constante(3, gen=30, cmg=0)

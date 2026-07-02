@@ -5,11 +5,20 @@
 ## Estado actual
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
-- **Fase 3 en curso — rebanadas 1 (optimizador estocástico ADR-004), 2 (`BacktestPolitica` §6.3) y 3 (`ReoptimizarIntradia` §6.2) completas.** El entregable del SAD §13 ("optimización sobre escenarios; backtest sobre histórico chileno; reoptimización intradía") está implementado. **Para cerrar la fase falta:** saldar la deuda de Fase 2 que se asignó aquí (re-evaluación LSTM por régimen/tuning por volumen, SARIMAX anual viable) — o trasladarla conscientemente — y la entrada de auditoría + sign-off en `docs/AUDIT.md`.
+- **Fase 3 CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0–3 completas. **Hallazgo estrella:** el LSTM entrenado régimen-local (ventana 720 obs) recupera la ventaja en el anual — CMg RMSE **20.3k vs 26.2k naive (−23%)**; con historial completo perdía (38.9k). La régimen-dependencia de Fase 2 quedó explicada y revertida.
+- **Próxima acción (Fase 4 — "Co-optimización SSCC + Capa MCP", SAD §13, el MVP):** co-optimizar arbitraje + servicios complementarios (reserva de frecuencia) en una sola función objetivo; capa MCP read-only (FastMCP) para interrogar/simular el plan; modo DRL opcional medido contra el baseline. Decisión abierta del SAD: ¿un solo producto SSCC o varios? (recomendación: uno, reserva de frecuencia).
+- **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año, 8754 h). Comandos reproducibles: `acopia-datos backtest --ventana-entrenamiento 720` y `acopia-datos backtest-politica` (ver bitácora).
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año completo, 8754 h) — CMg real S.GREGORIO 2025 + generación TMY Antofagasta. Git-ignored; se regeneran con `acopia-datos alinear` (comando exacto en bitácora 2026-07-01).
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-02 — CIERRE de Fase 3 (ventana régimen-local + deuda saldada + sign-off)
+- **`ventana_entrenamiento`** en `backtest_rodante` + flag CLI `--ventana-entrenamiento`: entrena con las últimas N obs (régimen-local) en vez de todo el histórico. Una sola pieza saldó ambas deudas de Fase 2.
+- **Anual 7 folds, ventana 720 (30 días):** naive gen 36.2 / CMg 26.2k · SARIMAX 41.3 / 28.2k (ahora corre en segundos; no bate al naive) · **LSTM 46.5 / CMg 20.3k → −23% vs naive**. Con historial completo el LSTM daba 38.9k: el problema era el régimen, no el modelo. OJO: en CMg MAPE empatan (~39-40%); la ganancia es en RMSE (magnitud, lo que pesa para arbitraje). En generación el naive sigue ganando.
+- La ventana 720 NO fue barrida (replica la config ganadora de enero); el sweep sistemático es deuda de Fase 4.
+- Verde: ruff/mypy(76)/import-linter OK · pytest **163 passed** (+3).
+- **Sign-off Fase 3:** ✅ en `docs/AUDIT.md`. Deuda → Fase 4: sweep ventana/hiperparámetros, backtest de política con LSTM, escenarios del LSTM en el estocástico, gatillo multi-señal, persistencia de pesos, RastroForecast a persistencia.
 
 ### 2026-07-02 — Fase 3 rebanada 3 (ReoptimizarIntradia + detección de desvío, §6.2)
 - **`deteccion_desvio`** (dominio, puro): `desvio_generacion_bp(previsto, observado)` compara la generación acumulada asumida por el plan vs la telemetría, en puntos base; `hay_desvio(..., umbral_bp)` es el gatillo. Borde: generación inesperada de noche (previsto 0) = desvío total (10000 bp); noche tranquila = 0.

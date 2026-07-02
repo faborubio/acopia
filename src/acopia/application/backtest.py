@@ -39,16 +39,23 @@ def backtest_rodante(
     horizonte: int,
     folds: int,
     semilla: int = 0,
+    ventana_entrenamiento: int | None = None,
 ) -> ResultadoBacktest:
     """Evalúa ``forecaster`` en ``folds`` tramos consecutivos de ``horizonte`` pasos.
 
-    Ventana expansiva: el fold ``k`` entrena con todo lo anterior al tramo y pronostica
-    los ``horizonte`` pasos siguientes. Devuelve el RMSE/MAPE promedio por serie.
+    Ventana expansiva por defecto: el fold ``k`` entrena con todo lo anterior al tramo
+    y pronostica los ``horizonte`` pasos siguientes. Con ``ventana_entrenamiento`` se
+    entrena solo con las últimas N observaciones previas al tramo (**régimen-local**):
+    acota el costo de modelos que re-entrenan por llamada (SARIMAX/LSTM) y evita que
+    un histórico largo con cambio de régimen (CMg) diluya el patrón reciente.
+    Devuelve el RMSE/MAPE promedio por serie.
     """
     if horizonte < 1:
         raise ValueError("El horizonte debe ser >= 1")
     if folds < 1:
         raise ValueError("folds debe ser >= 1")
+    if ventana_entrenamiento is not None and ventana_entrenamiento < 1:
+        raise ValueError("ventana_entrenamiento debe ser >= 1")
     if len(historia) <= folds * horizonte:
         raise ValueError(
             f"Historia insuficiente ({len(historia)}) para {folds} folds de {horizonte} "
@@ -60,6 +67,8 @@ def backtest_rodante(
     for k in range(folds):
         fin = len(historia) - (folds - 1 - k) * horizonte
         entrenamiento = historia[: fin - horizonte]
+        if ventana_entrenamiento is not None:
+            entrenamiento = entrenamiento[-ventana_entrenamiento:]
         real = historia[fin - horizonte : fin]
         escenario = forecaster.pronosticar(entrenamiento, horizonte, 1, semilla)[0]
 

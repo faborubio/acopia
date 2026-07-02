@@ -35,6 +35,40 @@
 
 ---
 
+## Fase 3 — Robustez + backtest — cerrada — 2026-07-02
+
+> Entregable del SAD §13: "Optimización sobre escenarios; backtest sobre histórico chileno; reoptimización intradía" — **completo**, con la deuda de Fase 2 saldada empíricamente.
+
+**Qué se entregó:**
+- **Optimizador estocástico de dos etapas (ADR-004):** `PuertoOptimizador.optimizar_escenarios` — programa de batería here-and-now común a todos los escenarios; vertido como recurso por escenario; factibilidad exigida en todos; objetivo = ingreso esperado ponderado por `probabilidad_bp` − ciclado. `optimizar` es el caso S=1 (equivalencia testeada). Test foto de ADR-004: sin retiro de red, el plan del caso medio carga PV que el escenario pesimista no tiene (inejecutable); el estocástico retiene.
+- **`SimuladorEjecucion` (dominio, puro) + `backtest_politica` (§6.3):** por día, forecast as-seen → plan estocástico → **ejecución contra lo real** (repair conservador auditable, `acciones_reparadas`) → esperado vs realizado vs foresight (+`captura_vs_foresight_bp`); el estado de la batería se arrastra entre días. CLI `acopia-datos backtest-politica`.
+- **`ReoptimizarIntradia` (§6.2) + `deteccion_desvio` (dominio):** gatillo por desvío de generación acumulada (bp); recalcula el resto del día desde el estado real sin re-versionar la política (ADR-008). Demo: día que se nubla → el plan obsoleto pierde ingreso; reoptimizar lo recupera con 0 reparaciones. Desvíos sintéticos (límite honesto §6.2: la telemetría plant-level no es pública).
+- **Ventana de entrenamiento régimen-local** (`backtest_rodante(..., ventana_entrenamiento)` + flag CLI): salda la deuda de Fase 2.
+
+**Resultados sobre datos reales (CMg S.GREGORIO 2025 + PV TMY):**
+- **Backtest de política** (5 días, naive, planta solo-PV+BESS): 1 escenario → captura 93.3% del foresight con 12 reparaciones; **5 escenarios → 100.4% con 6** — la robustez de ADR-004 reduce a la mitad los planes inejecutables. (Captura >100% legítima: el foresight es por-día sin valor terminal; la política arrastra energía entre días.)
+- **Deuda de Fase 2 saldada — anual (7 folds, ventana 720 obs = 30 días):**
+
+  | Modelo | gen RMSE | CMg RMSE | CMg MAPE |
+  |---|---|---|---|
+  | naive | **36.2** | 26220 | 39.1% |
+  | SARIMAX | 41.3 | 28165 | 39.2% |
+  | LSTM | 46.5 | **20274** | 40.0% |
+
+  El LSTM entrenado régimen-local **recupera la ventaja en CMg** (−23% RMSE vs naive; con historial completo perdía con 38.9k). La hipótesis del cierre de Fase 2 (régimen-dependencia, no defecto del modelo) queda **confirmada empíricamente**. SARIMAX anual ahora es viable en segundos (no bate al naive). Nota honesta: en MAPE de CMg los tres empatan (~39-40%) — la ganancia del LSTM es en magnitud absoluta del error, que es lo que pesa para el arbitraje; en generación el naive sigue ganando (la serie TMY es muy regular).
+
+**Verificación (todo en verde):** ruff OK · mypy --strict 76 files 0 issues · import-linter 2 KEPT · pytest **163 passed** (estocástico +7, simulador/política +9, intradía/desvío +12, ventana +3).
+
+**Vista de halcón (qué quedó débil):**
+- La **ventana de 720 obs no fue barrida sistemáticamente**: se eligió porque replica la config que ganó en enero. Un sweep de ventana/hiperparámetros y una regla de selección por régimen (hidrología/estación) quedan pendientes.
+- El backtest de política corre con **naive** (rápido); falta la corrida con LSTM-ventana como forecaster de la política (costo: ~25 s/día).
+- La telemetría es **sintética** (§6.2); el gatillo de desvío mira solo generación, no CMg ni estado de la batería.
+- Escenarios del estocástico vienen del bootstrap del naive; con escenarios del LSTM la cobertura de incertidumbre sería más fiel.
+- Números de política sobre planta 1 kW TMY y 5 días: direccionales.
+
+**Deuda generada (→ Fase 4):** sweep de ventana/hiperparámetros + selección por régimen; backtest de política con LSTM; escenarios del forecaster avanzado en el estocástico; gatillo de desvío multi-señal; persistencia de pesos del LSTM; integrar `RastroForecast` a la persistencia.
+**Sign-off:** ✅ 2026-07-02 — entregable del SAD completo; el hallazgo honesto de Fase 2 quedó explicado y revertido con evidencia.
+
 ## Fase 2 — Forecaster + escenarios — cerrada — 2026-07-02
 
 > Entregable del SAD §13: "Seq2Seq-LSTM + escenarios probabilísticos; baseline SARIMAX; snapshot" — **completo**. Cerrada con validación sobre datos chilenos reales (enero y año 2025) y snapshot as-seen (ADR-007).

@@ -39,8 +39,8 @@ Python 3.12+ · FastAPI · FastMCP · cvxpy/Pyomo + solver MILP · PyTorch (Seq2
 
 ## Estado actual
 
-Ver `MEMORY.md` (fuente de verdad del avance). **Fases 0, 1 y 2 cerradas** (sign-offs en
-`docs/AUDIT.md`). Fase 2 entregó: baseline estacional, SARIMAX, Seq2Seq-LSTM, ingesta de
-datos reales chilenos (CMg Coordinador + TMY Explorador Solar), backtest y snapshot
-as-seen (ADR-007). **Próximo: Fase 3 — Robustez + backtest** (estocástico, reoptimización
-intradía, re-evaluación del LSTM por régimen).
+Ver `MEMORY.md` (fuente de verdad del avance). **Fases 0–3 cerradas** (sign-offs en
+`docs/AUDIT.md`). Fase 3 entregó: optimizador estocástico de dos etapas (ADR-004),
+backtest de política sobre histórico real (§6.3), reoptimización intradía (§6.2) y el
+hallazgo de que el LSTM entrenado **régimen-local** bate al naive en CMg anual (−23%
+RMSE). **Próximo: Fase 4 — Co-optimización SSCC + Capa MCP (el MVP)**.
