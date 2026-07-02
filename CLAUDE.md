@@ -39,6 +39,8 @@ Python 3.12+ · FastAPI · FastMCP · cvxpy/Pyomo + solver MILP · PyTorch (Seq2
 
 ## Estado actual
 
-Ver `MEMORY.md` (fuente de verdad del avance). Fases 0 y 1 cerradas (+ deuda saldada);
-**Fase 2 (forecasting) en curso**: baseline estacional, SARIMAX, ingesta CSV y CLI
-`acopia-datos` listos. Próximo: Seq2Seq-LSTM. Datos reales: ver bitácora del 2026-06-29.
+Ver `MEMORY.md` (fuente de verdad del avance). **Fases 0, 1 y 2 cerradas** (sign-offs en
+`docs/AUDIT.md`). Fase 2 entregó: baseline estacional, SARIMAX, Seq2Seq-LSTM, ingesta de
+datos reales chilenos (CMg Coordinador + TMY Explorador Solar), backtest y snapshot
+as-seen (ADR-007). **Próximo: Fase 3 — Robustez + backtest** (estocástico, reoptimización
+intradía, re-evaluación del LSTM por régimen).

@@ -4,11 +4,18 @@
 
 ## Estado actual
 
-- **Fase:** 2 en curso — rebanadas 1 (forecasting), 1b (ingesta CSV), 1c (CLI datos), 2 (SARIMAX) y **3 (Seq2Seq-LSTM)** completas. Fase 1 + deuda cerradas.
-- **Próxima acción (Fase 2, cierre):** validar el forecaster sobre **datos chilenos reales** (descarga manual XLS de CMg + Explorador Solar, ver abajo) y persistir el **snapshot as-seen** del forecast (ADR-007) — es el gate de cierre de fase. Luego: comparación honesta LSTM vs SARIMAX sobre datos reales; deuda de persistencia de pesos (hoy se re-entrena por llamada).
+- **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
+- **Próxima acción (Fase 3 — "Robustez + backtest", SAD §13):** optimización sobre escenarios (estocástico, deuda de Fase 1) + reoptimización intradía + la deuda del cierre de Fase 2 — en particular **re-evaluación del LSTM por régimen/tuning por volumen** (ganó en enero, perdió en el anual con config fija) y SARIMAX anual viable.
+- **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año completo, 8754 h) — CMg real S.GREGORIO 2025 + generación TMY Antofagasta. Git-ignored; se regeneran con `acopia-datos alinear` (comando exacto en bitácora 2026-07-01).
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-02 — CIERRE de Fase 2 (backtest anual + sign-off)
+- **Backtest anual** (7 folds × 24 h sobre `planta_2025.csv`, 8754 h): naive gen RMSE **36.2** / CMg RMSE **26.2k** / CMg MAPE **39.1%** · LSTM (config CLI fija) gen 62.4 / CMg 38.9k / MAPE 46.1%. Corrió ~35 min el LSTM (1.2 s/época sobre ~8700 obs).
+- **Hallazgo clave (documentado sin maquillaje en AUDIT):** el LSTM que ganaba en enero (−36% CMg vs naive) **pierde contra el naive en el anual** con los mismos hiperparámetros (ventana 48, hidden 32, 250 épocas). Confirmación empírica del riesgo de ADR-002 (CMg régimen-dependiente): el tuning debe escalar con el volumen de historia. Va como deuda prioritaria a Fase 3.
+- SARIMAX anual no corrió (impráctico, ver bitácora anterior); queda como deuda (submuestra o fit incremental).
+- **Sign-off Fase 2:** ✅ en `docs/AUDIT.md` — entregable del SAD §13 completo (LSTM + escenarios + baseline SARIMAX + snapshot ADR-007), validado sobre datos reales.
 
 ### 2026-07-01 — Endurecimiento con casos borde (pre-cierre Fase 2)
 - **+20 tests de borde** (132 passed total). Forecasters (los 3, parametrizados): generación siempre 0 / serie constante (std=0, la estandarización del LSTM usa `+EPS` → sin NaN ni negativos), **CMg negativo admisible** (curtailment), horizonte 1, LSTM en largo mínimo exacto (ventana+horizonte). Ingesta: `parsear_decimal` negativos, ambigüedad de columna (`_indice_columna` con dos barras que empiezan igual → error claro), `alinear_por_posicion([],[])`. Snapshot: huella de 1 observación (64 hex). Backtest: `folds=1`.

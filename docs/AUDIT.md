@@ -35,14 +35,25 @@
 
 ---
 
-## Fase 2 — Forecaster + escenarios — en curso — 2026-06-29
+## Fase 2 — Forecaster + escenarios — cerrada — 2026-07-02
 
-> Entrada interim por rebanada. La fase cierra cuando el forecaster se valide sobre datos chilenos reales (no solo sintéticos) y se persista el snapshot as-seen.
+> Entregable del SAD §13: "Seq2Seq-LSTM + escenarios probabilísticos; baseline SARIMAX; snapshot" — **completo**. Cerrada con validación sobre datos chilenos reales (enero y año 2025) y snapshot as-seen (ADR-007).
+
+**Qué se entregó (cierre — backtest anual + endurecimiento, 2026-07-02):**
+- **Backtest anual** sobre `datos/planta_2025.csv` (8754 h reales de CMg S.GREGORIO 2025 + generación TMY), 7 folds × 24 h, vía `acopia-datos backtest`:
+
+  | Modelo (anual) | gen RMSE | gen MAPE | CMg RMSE | CMg MAPE |
+  |---|---|---|---|---|
+  | naive | **36.2** | **12.9%** | **26.2k** | **39.1%** |
+  | LSTM (config CLI fija) | 62.4 | 51.2% | 38.9k | 46.1% |
+
+- **Hallazgo honesto (el resultado importante de la fase):** el LSTM que ganaba en enero (−36% CMg RMSE vs naive) **pierde contra el naive en el test anual** con los mismos hiperparámetros del CLI (ventana 48, hidden 32, 250 épocas). Es el riesgo que ADR-002 anticipó: el CMg es **régimen-dependiente** y una config fija que sirve para 1 mes de historia queda subentrenada/mal calibrada para 12 meses. Conclusión operativa: **el forecaster necesita evaluación por régimen y tuning por volumen de datos** — trabajo natural de la Fase 3 ("Robustez + backtest"). SARIMAX anual no se corrió: con estacionalidad 24 sobre ~8000 puntos en ventana expansiva es impráctico (queda como deuda).
+- **+20 casos borde** (endurecimiento pre-cierre): forecasters con serie degenerada (gen=0, todo constante), CMg negativo admisible, horizonte 1, largo mínimo del LSTM; ingesta (negativos, columna ambigua, series vacías); huella de 1 observación; backtest folds=1. Destaparon y corrigieron un footgun real: el XLSX ancho sin fecha configurada devolvía 0 filas en silencio (ahora error claro).
 
 **Qué se entregó (snapshot as-seen del forecast — ADR-007, 2026-07-01):**
 - `RastroForecast` (dominio): procedencia reconstruible de un pronóstico (forecaster, horizonte, n_escenarios, semilla, n_observaciones, **huella SHA-256 de la historia**, escenarios). `domain/services/huella.py` (stdlib).
 - `application/pronosticar.py`: `pronosticar_con_rastro` (forecast + snapshot atómicos) y `reproduce_el_rastro` (auditoría de reproducibilidad bit a bit). Complementa `RastroDespacho` (plan) de Fase 1.
-- Año 2025 completo de S.GREGORIO (3 XLSX concatenados vía `--cmg` multi-archivo) → `datos/planta_2025.csv` (8754 h). Backtest sobre el año completo: pendiente (en curso).
+- Año 2025 completo de S.GREGORIO (3 XLSX concatenados vía `--cmg` multi-archivo) → `datos/planta_2025.csv` (8754 h; faltan ~6 h del año, prob. DST → desfase ≤6 h en la cola con `--recortar`, 0.07%).
 
 **Qué se entregó (datos reales + backtest — 2026-07-01):**
 - **Primer entrenamiento sobre datos reales chilenos:** CMg S.GREGORIO____013 enero 2025 (Coordinador, XLSX) + generación PV TMY Antofagasta (Explorador Solar, CSV) → `datos/planta.csv` (744 h, git-ignored). Pipeline: `leer_serie_csv` con `fila_encabezado` (salta metadatos del TMY) + flag `--recortar`.
@@ -62,18 +73,20 @@
 - `torch` como dependencia **opcional** (`[forecasting]`); rueda CPU. El núcleo determinista no la requiere. Frontera dura intacta: `import-linter` sigue prohibiendo `torch` en `domain/`.
 - Rebanadas previas (1, 1b, 1c, 2): baseline estacional-naïve, gateway de ingesta CSV, CLI `acopia-datos`, SARIMAX. Ver bitácora en `MEMORY.md`.
 
-**Verificación (todo en verde):** ruff OK · mypy --strict 61 files 0 issues · import-linter 2 KEPT · pytest **104 passed** (LSTM +7, XLSX +6, formato ancho/CSV +6, backtest +4).
+**Verificación (todo en verde, al cierre):** ruff OK · mypy --strict 67 files 0 issues · import-linter 2 KEPT · pytest **132 passed** (LSTM +7, XLSX +6, formato ancho/CSV +6, backtest +4, snapshot/huella +7, multi-cmg +1, bordes +20, resto acumulado de Fase 1).
 - Tests del LSTM: forma/cantidad, **determinismo** (misma semilla → mismos escenarios), generación no negativa, historia insuficiente, escenario-0-sin-ruido, **learnability** (reproduce una señal periódica, RMSE < 5 sobre pico de 90) y **comparación**: bate al estacional-naïve en RMSE sobre datos con tendencia.
 - Comparación 3-vías (set sintético período-4 + tendencia, RMSE gen / CMg): naive `8.00 / 2000` · SARIMAX `33.3 / 14283` · **LSTM `1.12 / 420`**.
 
 **Vista de halcón (qué quedó débil):**
-- **Honestidad de datos:** sin datos chilenos reales el LSTM se entrena sobre sintéticos. Esta rebanada entrega **arquitectura + pipeline determinista**, NO la cifra del paper (~34% menos RMSE). El objetivo verificable de ADR-002 ("batir al baseline en nuestro set") solo es honestamente exigible donde el baseline tiene sesgo estructural (tendencia); ahí el LSTM gana robustamente.
-- **SARIMAX es sensible a la especificación de orden:** el `33.3` de arriba es con un orden sin componente estacional; con el orden adecuado mejora. La comparación seria contra SARIMAX se hará sobre datos reales, no sobre este set.
-- **Entrenamiento por llamada:** consistente con SARIMAX, pero costoso para horizontes largos / históricos grandes. Un modo entrenar-una-vez / persistir-pesos es deuda futura.
-- **Generación de escenarios por ruido gaussiano** sobre el punto, no muestreo del espacio latente (MC dropout / ensembles) — suficiente para el MVP.
+- **El resultado del LSTM es régimen/config-dependiente:** gana con claridad en enero (−36% CMg RMSE) y pierde contra el naive en el test anual con hiperparámetros fijos. La cifra del paper (~34%) **no está validada**; lo que hay es evidencia mixta y el aprendizaje de que el tuning debe escalar con el volumen de historia. No se maquilló: ambas cifras quedan en esta auditoría.
+- **Generación TMY, no telemetría real de planta:** la serie PV es un año meteorológico típico (2004–2016) apareada por posición con CMg 2025. Suficiente para el pipeline y el forecaster; insuficiente para afirmar ingresos reales.
+- **SARIMAX no tiene cifra anual:** estacionalidad-24 sobre ~8000 puntos en ventana expansiva es impráctico (minutos por fit × folds). Falta submuestreo o fit incremental.
+- **Entrenamiento por llamada** (LSTM y SARIMAX): costoso a escala; falta modo entrenar-una-vez / persistir pesos.
+- **Escenarios por ruido gaussiano** sobre el punto, no muestreo del espacio latente (MC dropout / ensembles) — suficiente para el MVP.
+- 8754 vs 8760 h en el año alineado (≤6 h de desfase en la cola con `--recortar`).
 
-**Deuda generada:** validar sobre datos chilenos reales; persistencia de pesos (no re-entrenar por llamada); snapshot as-seen del forecast (ADR-007, pendiente para cierre de fase); comparación honesta LSTM vs SARIMAX sobre datos reales.
-**Sign-off:** (pendiente — fase en curso).
+**Deuda generada (→ Fase 3 "Robustez + backtest"):** re-evaluación del LSTM por régimen + tuning por volumen de datos (el hallazgo anual); SARIMAX anual (submuestra/fit incremental); persistencia de pesos; escenarios por muestreo latente; telemetría real de planta (o planta modelo sintética documentada, §7 del SAD); integrar `RastroForecast` a la persistencia junto al `RastroDespacho`.
+**Sign-off:** ✅ 2026-07-02 — entregable del SAD completo, validado sobre datos reales chilenos, con evidencia mixta del LSTM documentada sin maquillaje.
 
 ## Fase 1 — Despacho determinista — cerrada — 2026-06-28
 
