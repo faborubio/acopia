@@ -5,11 +5,17 @@
 ## Estado actual
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
-- **Fase 3 en curso — rebanadas 1 (optimizador estocástico ADR-004) y 2 (`BacktestPolitica` §6.3) completas.** Próxima acción: **rebanada 3 — `ReoptimizarIntradia`** (recalcular el resto del día ante desvíos, con desvíos sintéticos, §6.2). Deuda de Fase 2 pendiente: re-evaluación LSTM por régimen/tuning por volumen, SARIMAX anual viable.
+- **Fase 3 en curso — rebanadas 1 (optimizador estocástico ADR-004), 2 (`BacktestPolitica` §6.3) y 3 (`ReoptimizarIntradia` §6.2) completas.** El entregable del SAD §13 ("optimización sobre escenarios; backtest sobre histórico chileno; reoptimización intradía") está implementado. **Para cerrar la fase falta:** saldar la deuda de Fase 2 que se asignó aquí (re-evaluación LSTM por régimen/tuning por volumen, SARIMAX anual viable) — o trasladarla conscientemente — y la entrada de auditoría + sign-off en `docs/AUDIT.md`.
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año completo, 8754 h) — CMg real S.GREGORIO 2025 + generación TMY Antofagasta. Git-ignored; se regeneran con `acopia-datos alinear` (comando exacto en bitácora 2026-07-01).
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-02 — Fase 3 rebanada 3 (ReoptimizarIntradia + detección de desvío, §6.2)
+- **`deteccion_desvio`** (dominio, puro): `desvio_generacion_bp(previsto, observado)` compara la generación acumulada asumida por el plan vs la telemetría, en puntos base; `hay_desvio(..., umbral_bp)` es el gatillo. Borde: generación inesperada de noche (previsto 0) = desvío total (10000 bp); noche tranquila = 0.
+- **`reoptimizar_intradia`** (aplicación): recalcula los intervalos restantes **desde el estado real de la batería** con el forecast actualizado. La política NO se re-versiona (ADR-008): `dataclasses.replace` recorta `horizonte_intervalos` operacionalmente; el plan restante conserva id/versión. Valida `0 < intervalo_actual < horizonte` y el largo de los escenarios.
+- **Test demo de la fase:** día planificado soleado se nubla a la hora 1 (la carga se repara a RETENER → la batería queda con la mitad de lo previsto). Seguir el plan obsoleto por la tarde → la descarga planificada es infactible y se pierde ingreso; **reoptimizar desde el estado real recupera ingreso** (assert estricto) con 0 reparaciones. Telemetría = desvíos sintéticos (límite honesto de §6.2: la telemetría plant-level no es pública).
+- Verde: ruff/mypy(76)/import-linter OK · pytest **160 passed** (+12).
 
 ### 2026-07-02 — Fase 3 rebanada 2 (BacktestPolitica + SimuladorEjecucion, §6.3)
 - **`SimuladorEjecucion`** (dominio, puro): confronta un plan con el día **real**. Reglas conservadoras auditables: acción infactible para la batería → RETENER; carga que exigiría retirar de la red más allá del límite (el PV real no alcanza) → RETENER; vertido realizado = max(planificado, excedente obligatorio) acotado al PV real. Reporta `acciones_reparadas` (intervalos donde el plan era inejecutable).
