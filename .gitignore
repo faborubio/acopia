@@ -15,3 +15,6 @@ dist/
 
 # Entorno
 .env
+
+# Config MCP local (ruta absoluta de esta maquina)
+.mcp.json

@@ -12,6 +12,7 @@ interrogarlo desde Claude ("¿por qué cargaste a mediodía?").
 
 from __future__ import annotations
 
+import sys
 from dataclasses import asdict
 from typing import Any
 
@@ -171,7 +172,8 @@ def _demo() -> FastMCP:
         planta, EstadoBateria(Energia(20_000)), escenario, politica
     )
     servidor = crear_servidor(repositorio, optimizador, planta, politica)
-    print(f"Plan demo sembrado: plan_id={resultado.plan_id}")
+    # A stderr: en transporte stdio, stdout es el canal JSON-RPC del MCP.
+    print(f"Plan demo sembrado: plan_id={resultado.plan_id}", file=sys.stderr)
     return servidor
 
 
