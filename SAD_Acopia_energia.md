@@ -1,7 +1,7 @@
 # SAD — Acopia · Motor de Optimización de Despacho Solar + Batería (PV-BESS) + Capa MCP
 
 > **Documento de Arquitectura de Software (Software Architecture Document)**
-> Estructura: arc42 · Versión: 0.1 (draft) · Estado: propuesto para implementación
+> Estructura: arc42 · **Versión: 1.1.0** (historial al final) · Estado: en implementación — fases 0–3 cerradas, fase 4 en curso (sign-offs en [`docs/AUDIT.md`](./docs/AUDIT.md))
 > Proyecto: **Acopia** (identificador técnico: `acopia`) · *(de "acopio" = almacenamiento; reemplaza a "Acopia", descartado por colisión con Acopia.ai y cercanía fonética con ENGIE en el mercado chileno. Verificado sin colisión obvia en energía; pendiente confirmar dominios .ai/.cl e INAPI)*
 > Hub de contexto: ver [`CLAUDE.md`](./CLAUDE.md) y [`MEMORY.md`](./MEMORY.md)
 > Origen: *"Integrated forecasting and deep reinforcement learning for price-based self-scheduling of PV-BESS: Utility-scale evidence in Chile"* (Pérez, Lobos, Bonacic; U. de Los Andes, PLOS ONE 2026). Combina **forecasting Seq2Seq-LSTM** con control: un baseline **determinista predict-then-optimize** (el núcleo auditable) y **DRL (PPO/SAC)** como capa avanzada.
@@ -341,6 +341,7 @@ graph TD
 **ADR-001 — Núcleo predict-then-optimize determinista.** *Contexto:* decisiones de despacho deben ser defendibles ante el regulador. *Consecuencia:* reproducibilidad y auditabilidad; el DRL no es el árbitro.
 
 **ADR-002 — Seq2Seq-LSTM + escenarios, con baseline SARIMAX.** *Consecuencia:* mejor precisión y comparación honesta. *Nota:* el ~34% menos RMSE es lo que **el paper de referencia reporta sobre su dataset**, no una promesa sobre nuestros datos; el objetivo verificable es "batir a SARIMAX en nuestro set", no replicar ese número. *Riesgo de dominio:* el CMg es fuertemente **régimen-dependiente** (hidrología, gas, congestión); un año seco cambia la estructura del precio, por lo que el forecast debe re-evaluarse por régimen y no asumir estacionariedad.
+> **Enmienda ADR-002.1 (2026-07-09) — entrenamiento régimen-local.** El riesgo anticipado se **confirmó empíricamente** en F2–F3 sobre datos reales (CMg S.GREGORIO 2025): el LSTM con hiperparámetros fijos gana en enero (−36% CMg RMSE vs naive) pero **pierde en el backtest anual** con historial completo (38.9k vs 26.2k). La decisión: los forecasters entrenan **régimen-local** con una ventana deslizante de historia (`ventana_entrenamiento`, hoy 720 obs = 30 días), no con todo el histórico. Evidencia (anual, 7 folds): LSTM CMg RMSE **20.3k vs 26.2k naive (−23%)**; SARIMAX pasa de impráctico a segundos. *Trade-off aceptado:* la ventana 720 replica la config ganadora de enero y **no fue barrida sistemáticamente** (AUD-005); en generación PV el naive sigue ganando. Detalle en `docs/AUDIT.md` (cierre F3) y `docs/CASES.md` (régimen-dependencia).
 
 **ADR-003 — Modelo físico de batería en el dominio puro.** *Contexto:* además de SoC/potencia/eficiencia se modelan **C-rate** y **throughput de garantía** (cap de energía total en vida útil), que es lo que de verdad limita el ciclado de un BESS real más que un "max ciclos/día". Degradación tratada como costo. *Consecuencia:* restricciones duras respetadas y testeables sin solver; el plan no destruye la garantía de la batería.
 
@@ -351,10 +352,13 @@ graph TD
 **ADR-006 — Optimización determinista con semilla explícita.** *Consecuencia:* reproducibilidad verificable por property-test.
 
 **ADR-007 — Snapshot de forecast/precios/estado por plan.** *Consecuencia:* backtest y simulación fieles; auditoría reconstruible.
+> **Enmienda ADR-007.1 (2026-07-09) — `RastroForecast` con huella SHA-256.** El snapshot del *plan* (`RastroDespacho`, F1) se complementa con la **procedencia reconstruible del pronóstico**: `RastroForecast` (dominio) captura forecaster (id/versión), horizonte, n_escenarios, semilla, n_observaciones y la **huella SHA-256 de la historia as-seen** (`domain/services/huella.py`, stdlib), junto a los escenarios producidos. `pronosticar_con_rastro` los emite atómicamente y `reproduce_el_rastro` permite a un auditor regenerar el forecast **bit a bit** con la misma historia + semilla. Implementado en F2 (2026-07-01); persistir ambos rastros juntos es deuda de la fase de persistencia (AUD-010).
 
 **ADR-008 — PoliticaDeDespacho versionada; motor estable.** *Consecuencia:* fijar (política, forecast, semilla) reproduce el plan.
 
 **ADR-009 — Telemetría/precios/meteo como puertos.** *Consecuencia:* Acopia es testeable aislada (gateways simulados) e integrable con infraestructura real (estilo Atalaya).
+
+**ADR-010 — SSCC como un único producto: reserva de frecuencia por disponibilidad (2026-07-09).** *Contexto:* §3.0 dejó abierto si el MVP modela varios productos de SSCC (CPF/CSF/reservas, cada uno con banda y tiempo de respuesta) o uno solo. *Decisión:* el MVP co-optimiza **un** producto — `ReservaFrecuencia`: una **banda simétrica ±R** remunerada por **disponibilidad** a **precio constante fijado en la política** (`PoliticaDespacho.reserva: ReservaFrecuencia | None`; `None` = arbitraje puro). El LP le impone tres familias de restricciones: headroom de potencia (±R sobre el setpoint), energía para **sostener la activación el intervalo completo** (`energia − R/ef_d ≥ e_min`, `energia + ef_c·R ≤ e_max`) y factibilidad de inyección/retiro en el nodo **en todos los escenarios**. *Fuera del MVP:* el settlement de la activación real (la energía efectivamente entregada al activarse la banda) y la distinción CPF/CSF con tiempos de respuesta. *Por qué:* proporcionalidad — un producto basta para demostrar el problema interesante (la banda **compite** por la misma potencia y energía que el arbitraje, en una sola función objetivo) sin importar la burocracia tarifaria del Reglamento de SSCC; el esquema multi-producto de la política (§5.2) sigue siendo el destino si un activo real lo exige. *Consecuencia validada:* la co-optimización produce comportamientos emergentes correctos fijados por test (comprar energía de la red para vender disponibilidad; sin retiro de red, absorber exige estar inyectando ≥ R — ver `docs/CASES.md`).
 
 ---
 
@@ -457,6 +461,18 @@ Cada fase termina con auditoría en `AUDIT.md` y sign-off.
 | **Escenario** | Una trayectoria posible de generación/precios, con su probabilidad. |
 | **PoliticaDeDespacho** | Restricciones + objetivo + horizonte, versionado. Unidad atómica. |
 | **MCP** | Model Context Protocol. |
+
+---
+
+## Historial de revisiones
+
+> Regla del método: el SAD cambia **solo por ADR nuevo o enmienda versionada** — nunca por edición silenciosa.
+
+| Versión | Fecha | Cambios |
+|---|---|---|
+| 0.1 | 2026-06-28 | Draft inicial arc42: contexto, capas Clean Architecture, ADR-001…009, roadmap de 6 fases. |
+| 1.0.0 | 2026-06-28 | Endurecimiento "vista de halcón" pre-implementación: §3.0 (mercado chileno de despacho por costos, Ley 21.505, revenue stacking), SSCC co-optimizado entra al MVP (fase 4), cifras de curtailment verificadas, DRL reposicionado como experimento (ADR-005), C-rate + throughput de garantía en ADR-003, límites honestos de datos (§6.2, §6.3). Rename Ergia → Acopia. |
+| 1.1.0 | 2026-07-09 | Alineación con el Método (MANIFIESTO v1.1.0): **ADR-010** (SSCC como producto único de reserva de frecuencia por disponibilidad), **enmienda ADR-002.1** (entrenamiento régimen-local, con la evidencia anual F3), **enmienda ADR-007.1** (`RastroForecast` + huella SHA-256), esta tabla de historial y actualización del estado del documento (fases 0–3 cerradas). |
 
 ---
 

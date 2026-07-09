@@ -6,11 +6,22 @@ Motor de optimización de despacho para una planta solar con batería (PV-BESS) 
 
 ## Estado
 
-**Fase 1 — Despacho determinista (cerrada).** Optimizador predict-then-optimize (cvxpy + HIGHS) que, dado un forecast, genera un plan de despacho **factible y rentable**, con ingreso auditable y API REST. Sobre el scaffolding de Fase 0 (capas, value objects, `ModeloBateria` puro, property-tests). Ver [`docs/AUDIT.md`](./docs/AUDIT.md).
+**Fases 0–3 cerradas · Fase 4 en curso** (sign-offs en [`docs/AUDIT.md`](./docs/AUDIT.md)):
+
+- **F0 — Scaffolding:** capas Clean Architecture, value objects enteros, `ModeloBateria` puro, property-tests (determinismo y factibilidad).
+- **F1 — Despacho determinista:** optimizador predict-then-optimize (cvxpy + HIGHS) que genera un plan **factible y rentable** con ingreso auditable; API REST.
+- **F2 — Forecaster + escenarios:** estacional-naïve, SARIMAX y **Seq2Seq-LSTM** con escenarios probabilísticos deterministas; snapshot as-seen del forecast (huella SHA-256); pipeline de ingesta de datos chilenos reales.
+- **F3 — Robustez + backtest:** optimizador **estocástico de dos etapas**, backtest de política contra el día real (esperado vs realizado vs foresight) y reoptimización intradía. Sobre CMg real 2025: el LSTM régimen-local pronostica CMg con **−23% RMSE vs naive**; 5 escenarios capturan ~100% del foresight.
+- **F4 — Co-optimización SSCC + capa MCP (en curso):** arbitraje + **reserva de frecuencia** en una sola función objetivo (ADR-010) y **servidor MCP read-only** para interrogar y simular el plan. Falta: modo DRL medido contra el baseline.
 
 ```bash
 uv run uvicorn acopia.interfaces.rest.app:app --reload   # API en http://127.0.0.1:8000/docs
+python -m acopia.interfaces.mcp.servidor                 # servidor MCP (stdio) con demo sembrada
 ```
+
+La capa MCP expone `consultar_despacho`, `explicar_despacho` ("¿por qué cargaste a mediodía?")
+y `simular` ("¿y si el CMg colapsa en la punta?") — solo lectura y simulación, nada se ejecuta
+ni persiste.
 
 ## Estructura
 
@@ -35,7 +46,11 @@ uv run ruff check .          # lint
 uv run mypy                  # tipado estricto
 uv run lint-imports          # fronteras de arquitectura (import-linter)
 uv run pytest                # tests
+uv run pip-audit             # vulnerabilidades conocidas en dependencias
 ```
+
+Extras opcionales: `.[forecasting]` (torch CPU, LSTM), `.[ingesta]` (openpyxl, XLSX del
+Coordinador), `.[mcp]` (FastMCP, servidor MCP).
 
 Base de datos (TimescaleDB) para fases posteriores:
 
@@ -69,3 +84,11 @@ acopia-datos alinear --por-posicion \
 Los lectores toleran **coma decimal chilena** (`"57,79"`). Luego
 `GatewayCSV("planta.csv").cargar()` entrega la serie de `Observacion` que alimenta
 el forecaster y el despacho.
+
+Con la planta modelo armada, los backtests reproducibles:
+
+```bash
+acopia-datos backtest --planta datos/planta.csv --folds 5 \
+  --modelos naive,sarimax,lstm --ventana-entrenamiento 720   # error de forecast por modelo
+acopia-datos backtest-politica --planta datos/planta.csv     # ingreso esperado vs realizado vs foresight
+```

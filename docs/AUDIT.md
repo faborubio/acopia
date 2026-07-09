@@ -15,6 +15,44 @@
 
 ---
 
+## Registro de deuda técnica (`AUD-NNN`)
+
+> Regla del método: **todo trade-off aceptado tiene su `AUD-NNN`** — un trade-off sin entrada aquí es deuda invisible. Este registro numera la deuda viva y la pagada; el detalle narrativo sigue en el log por fase (abajo). Al pagar una deuda: cambiar el estado y anotar dónde se pagó, no borrar la fila.
+
+### Deuda viva
+
+| ID | Deuda | Origen | Estado / plan |
+|---|---|---|---|
+| AUD-001 | **Autodescarga de la batería** ignorada en `ModeloBateria` (documentado en `modelo_bateria.py`). | F0 | Pendiente — modelarla como pérdida por intervalo cuando haya datos de un BESS real. |
+| AUD-002 | **C-rate implícito** en `potencia_max_*`; no es parámetro propio de `Bateria` (ADR-003 lo nombra). | F0 | Pendiente — explícito cuando se modele un activo real. |
+| AUD-003 | **Re-clamp del límite de retiro en la cuantización**: la restricción vive en el LP; el redondeo a enteros no re-verifica el límite de retiro del nodo. | F1 | Pendiente — clamp conservador análogo a `_reserva_factible` (F4). |
+| AUD-004 | **SoC inicial fuera de banda se rechaza** (`ValueError` → 422) en vez de permitir converger a la banda. | F1 | Pendiente — modo "converger" opt-in de la política. |
+| AUD-005 | **Ventana régimen-local sin sweep**: 720 obs replica la config ganadora de enero; falta barrido de ventana/hiperparámetros y una regla de selección por régimen (hidrología/estación). | F3 | Pendiente — prioritaria antes de afirmar cifras de forecast (enmienda ADR-002.1). |
+| AUD-006 | **Backtest de política corre con naive**; falta la corrida con LSTM-ventana como forecaster de la política (~25 s/día). | F3 | Pendiente. |
+| AUD-007 | **Escenarios del estocástico vienen del bootstrap del naive**, no del forecaster avanzado. | F3 | Pendiente — alimentar ADR-004 con escenarios del LSTM. |
+| AUD-008 | **Gatillo de desvío mono-señal**: mira solo generación acumulada; no CMg ni estado de batería. | F3 | Pendiente. |
+| AUD-009 | **LSTM/SARIMAX entrenan por llamada**; sin persistencia de pesos ni modo entrenar-una-vez. | F2 | Pendiente — costoso a escala, aceptable en portafolio. |
+| AUD-010 | **`RastroForecast` no se persiste** junto al `RastroDespacho` (enmienda ADR-007.1). | F2 | Pendiente — fase de persistencia real (Timescale). |
+| AUD-011 | **El rastro no persiste la política completa** (batería/resolución llegan por inyección al servidor MCP). | F4 | Pendiente — fase de persistencia real, junto con AUD-010. |
+| AUD-012 | **Telemetría de planta sintética** (plant-level no es pública, SAD §6.2): la reoptimización intradía se demuestra con desvíos sintéticos. | F3 | Aceptada para portafolio — datos reales exigen un activo real (fase 5). |
+| AUD-013 | **Escenarios por ruido gaussiano** sobre el punto, no muestreo latente (MC dropout / ensembles). | F2 | Aceptada para el MVP. |
+| AUD-014 | **Falta test del optimizador con garantía de throughput casi agotada** (el caso "agotada = 0" sí está cubierto). | F1 | Pendiente — test de borde. |
+| AUD-015 | **Valor terminal por defecto `None`**: sin configurarlo, la batería puede liquidarse al fin de horizonte. | F1 | Aceptada — es una decisión del operador, documentada en `CASES.md` (precio plano). |
+
+### Deuda pagada
+
+| ID | Deuda | Origen | Pagada en |
+|---|---|---|---|
+| AUD-016 | Puertos sin Protocols (paquete vacío). | F0 | F1 — `PuertoOptimizador`, `RepositorioPlanes` y sucesores. |
+| AUD-017 | Efecto fin de horizonte (liquidación de la batería). | F1 | Cierre de deuda 2026-06-28 — `precio_energia_final_mills_por_mwh` opcional. |
+| AUD-018 | Curtailment voluntario a CMg negativo sin cubrir. | F1 | Cierre de deuda 2026-06-28 — `test_curtailment_voluntario_a_cmg_negativo`. |
+| AUD-019 | Optimización sobre un solo escenario (caso medio). | F1 | F3 rebanada 1 — estocástico de dos etapas (ADR-004). |
+| AUD-020 | LSTM régimen-dependiente: pierde en el anual con config fija (hallazgo F2). | F2 | F3 cierre — ventana régimen-local 720 (enmienda ADR-002.1): CMg RMSE 20.3k vs 26.2k naive. |
+| AUD-021 | SARIMAX anual impráctico (ventana expansiva). | F2 | F3 cierre — la misma ventana régimen-local lo baja a segundos (no bate al naive). |
+| AUD-022 | Snapshot as-seen del forecast inexistente. | F2 | F2 — `RastroForecast` + huella SHA-256 (ADR-007.1). Persistirlo sigue vivo como AUD-010. |
+
+---
+
 ## Cierre de deuda (post-Fase 1, pre-Fase 2) — 2026-06-28
 
 > Antes de avanzar a Fase 2 se atendió la deuda acumulada.

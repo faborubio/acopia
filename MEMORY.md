@@ -6,7 +6,8 @@
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
 - **Fase 3 CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0–3 completas. **Hallazgo estrella:** el LSTM entrenado régimen-local (ventana 720 obs) recupera la ventaja en el anual — CMg RMSE **20.3k vs 26.2k naive (−23%)**; con historial completo perdía (38.9k). La régimen-dependencia de Fase 2 quedó explicada y revertida.
-- **PRÓXIMA ACCIÓN (sesión nueva): alineación con el Método** — ejecutar el plan de 5 pasos de la bitácora 2026-07-09 (abajo). El MANIFIESTO vive en `\\wsl.localhost\Ubuntu-24.04\home\faborubio\Workspace\metodo\MANIFIESTO.md` (v1.1.0). Después de eso: Fase 4 rebanada 3 (DRL, abajo).
+- **Alineación con el Método: EJECUTADA (2026-07-09, bitácora abajo).** Los 5 pasos completos: TROUBLESHOOTING/CASES poblados, SAD v1.1.0 (ADR-010 + enmiendas ADR-002.1/007.1 + historial), registro `AUD-NNN` en AUDIT, README al día, DoD de 7 pasos en CLAUDE.md, pip-audit en el toolchain.
+- **PRÓXIMA ACCIÓN (sesión nueva): Fase 4 rebanada 3 — modo DRL opcional** (ADR-005, abajo).
 - **Fase 4 en curso — rebanadas 1 (co-optimización SSCC, §3.0) y 2 (capa MCP, §5) completas.** Pendiente: **rebanada 3 — modo DRL opcional** (ADR-005, experimento medido contra el baseline; incluye la herramienta MCP `comparar_modos`). Ojo disco: **3.6 GB libres** — stable-baselines3 + gymnasium caben pero justo; considerar liberar espacio antes.
 - **Servidor MCP activo:** `.mcp.json` local (git-ignored) apunta a `python -m acopia.interfaces.mcp.servidor` (demo stdio con plan sembrado). Herramientas: `consultar_despacho`, `explicar_despacho`, `simular`.
 - **Deuda conocida de la capa MCP:** el rastro no persiste la batería/resolución (el servidor las recibe por inyección); persistir la política completa junto al rastro es deuda para la fase de persistencia real (Timescale).
@@ -15,6 +16,15 @@
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-09 — Alineación con el Método EJECUTADA (plan de 5 pasos completo)
+- **1. `docs/TROUBLESHOOTING.md`** dejó de estar vacío: 4 incidentes reales (disco 0 GB corrompe cachés; API v4 del Coordinador inviable para bulk; stdout corrompía el JSON-RPC del MCP stdio; SARIMAX anual impráctico → `--ventana-entrenamiento`).
+- **2. `docs/CASES.md`** ganó la sección "Casos de datos reales (Fases 2–4)": coma decimal, formato ancho del Coordinador, CMg=0 sostenido, CMg negativo en forecast, series std=0, TMY sin calendario común, 8754 vs 8760 h, **régimen-dependencia del CMg** y los 2 emergentes SSCC. "Desvío intradía" pasó de ⏳ a ✅.
+- **3. SAD → v1.1.0** (con tabla de historial de revisiones, antes no existía): **ADR-010** (SSCC = un producto: banda simétrica por disponibilidad, precio en la política; settlement de activación fuera del MVP), **enmienda ADR-002.1** (entrenamiento régimen-local, evidencia anual 20.3k vs 26.2k), **enmienda ADR-007.1** (`RastroForecast` + huella SHA-256). Header actualizado (versión/estado; ya no dice "0.1 draft propuesto").
+- **4. `docs/AUDIT.md`** ganó el **registro `AUD-NNN`**: AUD-001…015 deuda viva (con plan/estado) + AUD-016…022 deuda pagada (con dónde se pagó). El log por fase se mantiene intacto. Numeración cruzada desde el SAD (AUD-005 = sweep ventana, AUD-010 = persistir RastroForecast).
+- **5. README** al día (fases 0–3 cerradas + F4 con el MCP de titular, comandos MCP/backtest, extras opcionales) + **DoD de 7 pasos** del MANIFIESTO escrito en `CLAUDE.md` (incluida la pregunta 1a "¿hay una idea mejor?") + **pip-audit** en `[dev]` de pyproject. pip-audit encontró y se pagó al tiro: setuptools 70.2.0 vulnerable (PYSEC-2025-49) → actualizado a `>=78.1.1,<82` (torch exige <82). Nota: pip-audit no puede auditar `torch 2.12.1+cpu` (rueda del índice de PyTorch, no PyPI) — limitación conocida, aceptable.
+- Verde completo: ruff OK · mypy(85) OK · import-linter 2 KEPT · pytest **183 passed** · pip-audit sin vulnerabilidades.
+- **Sigue pendiente del usuario (seguridad, reiterado):** rotar la key SIP del Coordinador expuesta en junio.
 
 ### 2026-07-09 — Revisión contra el Método (MANIFIESTO v1.1.0) — PLAN APROBADO, ejecutar en sesión nueva
 - Se auditó Acopia contra `MANIFIESTO.md` (doctrina personal del usuario, en `\\wsl.localhost\Ubuntu-24.04\home\faborubio\Workspace\metodo\`). **Cumple en espíritu** (SAD que manda, fases + sign-off, deuda visible, honestidad, CLAUDE.md reentrable, proporcionalidad) pero hay gaps concretos. **El usuario aprobó aplicar TODO el paquete.**
@@ -214,5 +224,5 @@
 - **Renombrar la carpeta local `ergia` → `acopia`** (solo cosmético; paquete/repo/GitHub ya son `acopia`). Se hace al cerrar la sesión y reabrir VSCode/Claude en la nueva ruta (no se puede en caliente).
 - Confirmar dominios **acopia.ai / acopia.cl** con WHOIS en vivo (búsqueda web no mostró registro, pero no es prueba). `acopia.com` probablemente tomado (hipotecaria usa myacopia.com).
 - **INAPI:** registrar marca en clase software/energía (Niza 9/42/39-40). Homónimos en otros sectores no bloquean: Acopia Networks (IT, muerta tras compra de F5 en 2007), Acopia LLC (hipotecaria US), Acopia Ventures (VC), ACOPIA (ONG). Cero colisión en energía/energytech/Chile.
-- ¿Modelar SSCC con un solo producto (reserva de frecuencia) en fase 4 o varios desde el inicio?
+- ~~¿Modelar SSCC con un solo producto (reserva de frecuencia) en fase 4 o varios desde el inicio?~~ **Resuelta: un solo producto (ADR-010, 2026-07-09).**
 - Fuente concreta de datos: API del Coordinador Eléctrico Nacional para CMg + Explorador Solar para irradiancia.

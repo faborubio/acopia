@@ -31,6 +31,8 @@ dev = [
     "mypy>=1.11",
     "import-linter>=2.0",
     "httpx>=0.27",
+    # Pata de seguridad del "verde" (proporcional al proyecto: deps con CVEs conocidos).
+    "pip-audit>=2.7",
 ]
 
 [build-system]

@@ -17,13 +17,27 @@ Motor de optimización de despacho para una planta solar con batería (PV-BESS) 
 
 Al cerrar la sesión: escribe en `MEMORY.md` el estado y la próxima acción.
 
-## Modo de trabajo (SDD)
+## Modo de trabajo (SDD + el Método)
 
-Specification-Driven Development. Loop: **Especificar → Implementar → Verificar → Auditar → Sign-off** (ver §12 del SAD).
+Specification-Driven Development. Loop: **Especificar → Implementar → Verificar → Auditar → Sign-off** (ver §12 del SAD). El proyecto se rige por el MANIFIESTO del Método (v1.1.0, `\\wsl.localhost\Ubuntu-24.04\home\faborubio\Workspace\metodo\MANIFIESTO.md`).
 
-- La **spec se actualiza antes que el código**.
-- **Ninguna fase cierra sin su entrada en `docs/AUDIT.md`**.
+- La **spec se actualiza antes que el código** (el SAD cambia solo por ADR nuevo o enmienda versionada; historial al final del SAD).
+- **Ninguna fase cierra sin su entrada en `docs/AUDIT.md`**; todo trade-off aceptado tiene su **`AUD-NNN`** en el registro de deuda.
+- Antes de tocar una heurística/config, el caso real se documenta en `docs/CASES.md` (evidencia, no intuición).
 - El **dominio primero** (puro, stdlib-only), los adaptadores después.
+- **Proporcionalidad:** el rigor de más es deuda, no virtud.
+
+### Definition of Done (obligatorio, en orden, al cerrar cada fase)
+
+1. **Ronda crítica (vista de halcón)** — dos preguntas, en este orden:
+   1. **¿Hay una idea mejor?** Releer las *decisiones* de la fase: ¿algún ADR, heurística o diseño tiene hoy una alternativa superior a la luz de lo aprendido? Si sí, se decide ahora — enmendar (ADR nuevo / enmienda versionada) o diferir con su `AUD-NNN` — porque después de cerrar, el costo de cambiar solo sube.
+   2. **¿Hay bugs?** Releer el *código* de la fase cazando bugs y bordes; corregir los de riesgo real, diferir el resto como `AUD-NNN`.
+2. **Casos borde → `docs/CASES.md`** (sobre todo tras datos reales).
+3. **Deuda → `docs/AUDIT.md`** — todo trade-off aceptado obtiene su `AUD-NNN`.
+4. **Incidentes → `docs/TROUBLESHOOTING.md`** — toda falla resuelta durante la fase.
+5. **Contexto → `CLAUDE.md` + `README.md` + `MEMORY.md`** en sincronía con el resto.
+6. **Verde** — ruff · mypy --strict · lint-imports · pytest · **pip-audit**.
+7. **Commit + push.**
 
 ## Convenciones
 
@@ -40,10 +54,9 @@ Python 3.12+ · FastAPI · FastMCP · cvxpy/Pyomo + solver MILP · PyTorch (Seq2
 ## Estado actual
 
 Ver `MEMORY.md` (fuente de verdad del avance). **Fases 0–3 cerradas** (sign-offs en
-`docs/AUDIT.md`); **Fase 4 en curso**: co-optimización SSCC (rebanada 1) y capa MCP
-read-only (rebanada 2) entregadas; falta el modo DRL (rebanada 3).
-**Próxima acción: alineación con el Método** — el proyecto se rige por la doctrina del
-usuario en `\\wsl.localhost\Ubuntu-24.04\home\faborubio\Workspace\metodo\MANIFIESTO.md`;
-hay un plan aprobado de 5 pasos en la bitácora 2026-07-09 de `MEMORY.md` (migrar
-incidentes/casos a sus docs, ADR-010 + enmiendas al SAD, deuda como AUD-NNN, README +
-DoD + pip-audit). Ejecutarlo antes de retomar la rebanada DRL.
+`docs/AUDIT.md`); **Fase 4 en curso**: co-optimización SSCC (rebanada 1, ADR-010) y capa
+MCP read-only (rebanada 2) entregadas. La **alineación con el Método está ejecutada**
+(2026-07-09: SAD v1.1.0, registro `AUD-NNN`, docs poblados, DoD arriba, pip-audit).
+**Próxima acción: Fase 4 rebanada 3 — modo DRL opcional** (ADR-005): experimento medido
+contra el baseline determinista + herramienta MCP `comparar_modos`. Ojo disco: ~3.6 GB
+libres; stable-baselines3 + gymnasium caben pero justo.

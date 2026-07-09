@@ -59,9 +59,65 @@
 - **Cubierto por:** ✅ `tests/application/test_planificar_despacho.py::test_soc_sin_banda_operativa_solo_retiene`.
 
 ### Desvío fuerte del forecast intradía
-- **Escenario:** generación real << forecast a media jornada.
-- **Comportamiento esperado:** `ReoptimizarIntradia` recalcula el resto del día con el estado real; el plan original queda en el rastro.
-- **Cubierto por:** ⏳ pendiente — `ReoptimizarIntradia` es Fase 3 (con planta modelo sintética).
+- **Escenario:** generación real << forecast a media jornada (el día planificado soleado se nubla).
+- **Comportamiento esperado:** `ReoptimizarIntradia` recalcula el resto del día desde el estado real de la batería; el plan original queda en el rastro; la política no se re-versiona (ADR-008).
+- **Cubierto por:** ✅ `tests/application/test_reoptimizar_intradia.py` (`test_el_desvio_de_la_manana_gatilla_la_reoptimizacion`, `test_reoptimizar_recupera_ingreso_frente_al_plan_obsoleto`, `test_conserva_id_y_version_de_la_politica`) + gatillo en `tests/domain/test_deteccion_desvio.py`. Telemetría sintética (límite honesto del SAD §6.2).
+
+---
+
+## Casos de datos reales (Fases 2–4)
+
+> Descubiertos al ingerir datos chilenos reales (CMg S.GREGORIO 2025 del Coordinador + generación TMY del Explorador Solar) y al co-optimizar SSCC. Regla del método: el caso se documenta **antes** de calibrar heurística/config.
+
+### Coma decimal chilena en TODO dato numérico
+- **Escenario:** el Coordinador y el Explorador Solar entregan `"57,79415"` (coma decimal) e incluso miles con punto (`"1.234,56"`).
+- **Comportamiento esperado:** `parsear_decimal` tolera ambos formatos (también negativos); lo usan el gateway CSV, los lectores de serie y la extracción de CMg.
+- **Cubierto por:** ✅ `test_parsear_decimal_tolera_coma_chilena`, `test_parsear_decimal_negativos` (`tests/infrastructure/test_preparacion.py`), `test_lee_coma_decimal_chilena` (`tests/infrastructure/test_gateway_csv.py`).
+
+### Formato ANCHO del XLSX de CMg del Coordinador
+- **Escenario:** columnas `Fecha | Día | Hora | Barra | <NOMBRE_BARRA>`: timestamp partido en `Fecha` (celda **combinada** por día → openpyxl devuelve `None` fuera de la fila ancla) + `Hora` (0..23); la columna de CMg se titula con el mnemónico de la barra (`S.GREGORIO____013`) y `Barra` va vacía.
+- **Comportamiento esperado:** forward-fill de la fecha combinada + `--col-hora-cmg`; **matching tolerante** de columna (`--col-cmg "S.GREGORIO"` calza con `S.GREGORIO____013`, y dos barras con el mismo prefijo dan error claro, no una elección silenciosa). Si la columna de fecha no tiene valores, **falla con mensaje claro** (antes devolvía 0 filas en silencio — footgun real).
+- **Cubierto por:** ✅ `test_leer_cmg_formato_ancho_coordinador`, `test_cli_alinear_cmg_ancho_del_coordinador`, `test_indice_columna_ambiguo_falla`, `test_leer_serie_xlsx_ancho_sin_fecha_falla` (`tests/infrastructure/test_preparacion.py`).
+
+### CMg = 0 sostenido a mediodía (sobreoferta solar real)
+- **Escenario:** en enero 2025, S.GREGORIO registró **240 h con CMg = 0** — no es un dato corrupto, es la duck curve chilena (el diferencial que Acopia arbitra).
+- **Comportamiento esperado:** el pipeline y los forecasters admiten CMg 0 sin tratarlo como faltante; las métricas no dividen por cero (MAPE omite reales nulos); el despacho carga en esas horas.
+- **Cubierto por:** ✅ `test_mape_omite_reales_nulos` (`tests/domain/test_metricas_forecast.py`) + backtests reales sobre `datos/planta.csv` (la demo MCP siembra exactamente ese perfil).
+
+### CMg negativo también en el forecast
+- **Escenario:** el CMg puede ser negativo (curtailment extremo); el forecaster no debe recortarlo a 0 como hace con la generación PV.
+- **Comportamiento esperado:** los tres forecasters emiten CMg negativo si la historia lo sugiere; solo la generación se recorta a ≥ 0.
+- **Cubierto por:** ✅ `test_cmg_negativo_es_admisible` (parametrizado sobre los 3 forecasters, `tests/infrastructure/test_forecasters_borde.py`).
+
+### Series degeneradas (std = 0) en el LSTM
+- **Escenario:** generación siempre 0 (falla larga, invierno extremo) o serie constante — la estandarización dividiría por σ = 0 → NaN.
+- **Comportamiento esperado:** estandarización con `+EPS`; el forecaster no produce NaN ni generación negativa.
+- **Cubierto por:** ✅ `test_generacion_siempre_cero_no_rompe`, `test_serie_constante_no_rompe` (`tests/infrastructure/test_forecasters_borde.py`).
+
+### Año típico (TMY) y CMg real no comparten calendario
+- **Escenario:** el Explorador Solar entrega un año meteorológico **típico** (2004–2016); el CMg es de 2025. Un join por timestamp da vacío.
+- **Comportamiento esperado:** alineación **por posición** (hora a hora) con el timestamp del CMg, opt-in (`--por-posicion`); largos distintos exigen `--recortar` explícito (no se recorta en silencio).
+- **Cubierto por:** ✅ `test_alinear_por_posicion_usa_ts_del_cmg`, `test_alinear_por_posicion_exige_mismo_largo`, `test_cli_alinear_recortar_al_largo_menor`, `test_cli_alinear_por_posicion` (`tests/infrastructure/test_preparacion.py`).
+
+### El año real trae 8754 h, no 8760 (probable DST)
+- **Escenario:** el CMg 2025 concatenado suma 8754 h (faltan ~6); con `--por-posicion --recortar` la cola del año puede quedar desfasada ≤ 6 h contra el TMY.
+- **Comportamiento esperado:** aceptado y documentado (0.07% del año); no se interpola ni se rellena en silencio.
+- **Cubierto por:** ✅ documentado aquí y en `MEMORY.md` (2026-07-01); decisión consciente, sin heurística oculta.
+
+### Régimen-dependencia del CMg (el hallazgo estrella de F2–F3)
+- **Escenario:** el LSTM que ganaba con 1 mes de historia (−36% CMg RMSE vs naive en enero) **pierde contra el naive en el backtest anual** con los mismos hiperparámetros (38.9k vs 26.2k). El CMg cambia de régimen (hidrología, gas, congestión) y una config fija no lo sigue.
+- **Comportamiento esperado:** entrenamiento **régimen-local** — `--ventana-entrenamiento 720` (30 días) entrena con las últimas N obs; el LSTM recupera la ventaja anual (CMg RMSE **20.3k vs 26.2k naive, −23%**). Es la evidencia empírica del riesgo que ADR-002 anticipó (enmienda 2026-07-09 en el SAD).
+- **Cubierto por:** ✅ `test_ventana_de_entrenamiento_recorta_la_historia`, `test_ventana_expansiva_por_defecto` (`tests/application/test_backtest.py`) + cifras en `docs/AUDIT.md` (cierres de F2 y F3). Ojo: la ventana 720 no fue barrida (AUD-005).
+
+### SSCC emergente: comprar energía de la red para vender disponibilidad
+- **Escenario:** la banda de reserva paga más que el spot; el LP decide **retirar de la red** para tener energía que respalde la banda (arbitraje entre productos, no entre horas).
+- **Comportamiento esperado:** es correcto y deseado — la co-optimización de ADR-010 lo permite mientras respete nodo, SoC y throughput. Se fija como invariante, no se "corrige".
+- **Cubierto por:** ✅ `test_comprar_energia_para_vender_disponibilidad` (`tests/infrastructure/test_cooptimizacion_sscc.py`).
+
+### SSCC emergente: sin retiro de red, absorber exige estar inyectando
+- **Escenario:** planta con `retiro_max = 0`: para absorber la activación a bajar (cargar +R) sin retirar de la red, el punto de conexión exige **estar inyectando ≥ R**.
+- **Comportamiento esperado:** el LP reparte óptimamente entre vender e inyectar de respaldo (en el test, d = R = 5 kW). Moraleja de testing: fijar invariantes físicos, no expectativas ingenuas — el LP ganó dos veces.
+- **Cubierto por:** ✅ `test_sin_retiro_la_banda_exige_estar_inyectando` (`tests/infrastructure/test_cooptimizacion_sscc.py`).
 
 ---
 
