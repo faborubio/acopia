@@ -40,7 +40,10 @@ Python 3.12+ · FastAPI · FastMCP · cvxpy/Pyomo + solver MILP · PyTorch (Seq2
 ## Estado actual
 
 Ver `MEMORY.md` (fuente de verdad del avance). **Fases 0–3 cerradas** (sign-offs en
-`docs/AUDIT.md`). Fase 3 entregó: optimizador estocástico de dos etapas (ADR-004),
-backtest de política sobre histórico real (§6.3), reoptimización intradía (§6.2) y el
-hallazgo de que el LSTM entrenado **régimen-local** bate al naive en CMg anual (−23%
-RMSE). **Próximo: Fase 4 — Co-optimización SSCC + Capa MCP (el MVP)**.
+`docs/AUDIT.md`); **Fase 4 en curso**: co-optimización SSCC (rebanada 1) y capa MCP
+read-only (rebanada 2) entregadas; falta el modo DRL (rebanada 3).
+**Próxima acción: alineación con el Método** — el proyecto se rige por la doctrina del
+usuario en `\\wsl.localhost\Ubuntu-24.04\home\faborubio\Workspace\metodo\MANIFIESTO.md`;
+hay un plan aprobado de 5 pasos en la bitácora 2026-07-09 de `MEMORY.md` (migrar
+incidentes/casos a sus docs, ADR-010 + enmiendas al SAD, deuda como AUD-NNN, README +
+DoD + pip-audit). Ejecutarlo antes de retomar la rebanada DRL.
