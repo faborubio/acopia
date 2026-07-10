@@ -231,7 +231,8 @@
 - **Creada la documentación viva:** `CLAUDE.md`, `MEMORY.md`, `docs/AUDIT.md`, `docs/CASES.md`, `docs/TROUBLESHOOTING.md`.
 
 ## Decisiones abiertas / pendientes
-- **Renombrar la carpeta local `ergia` → `acopia`** (solo cosmético; paquete/repo/GitHub ya son `acopia`). Se hace al cerrar la sesión y reabrir VSCode/Claude en la nueva ruta (no se puede en caliente).
+- **Renombrar la carpeta local `ergia` → `acopia` — SCRIPT LISTO (2026-07-09):** cerrar VSCode y ejecutar `..\renombrar_a_acopia.ps1` (vive en `ProyectosPortafolio/`, fuera del repo). Renombra, **reconstruye el `.venv`** (no es relocalizable en Windows), corrige la ruta absoluta de `.mcp.json` y corre pytest. La memoria de Claude ya está copiada al slug nuevo. Al terminar: reabrir VSCode en `...\acopia`, marcar esto como resuelto y borrar el script.
+- **Rotar la key SIP (cómo):** en `portal.api.coordinador.cl` → iniciar sesión → aplicaciones/suscripciones → la app suscrita a **Información Pública (SIP)** → regenerar la clave; si el portal no ofrece regenerar, borrar la app y crear una nueva (cada app emite su propia key). Verificado 2026-07-09: la key expuesta NO está en el repo, ni en el historial de git, ni en los historiales de shell — solo en el chat de junio.
 - Confirmar dominios **acopia.ai / acopia.cl** con WHOIS en vivo (búsqueda web no mostró registro, pero no es prueba). `acopia.com` probablemente tomado (hipotecaria usa myacopia.com).
 - **INAPI:** registrar marca en clase software/energía (Niza 9/42/39-40). Homónimos en otros sectores no bloquean: Acopia Networks (IT, muerta tras compra de F5 en 2007), Acopia LLC (hipotecaria US), Acopia Ventures (VC), ACOPIA (ONG). Cero colisión en energía/energytech/Chile.
 - ~~¿Modelar SSCC con un solo producto (reserva de frecuencia) en fase 4 o varios desde el inicio?~~ **Resuelta: un solo producto (ADR-010, 2026-07-09).**
