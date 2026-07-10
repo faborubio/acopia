@@ -285,7 +285,6 @@ class OptimizadorLP:
         """Cuantiza acciones (comunes), vertido de recurso por escenario y banda SSCC."""
         bateria = planta.bateria
         resolucion = politica.resolucion
-        segundos = resolucion.segundos
         iny_max_wh = planta.potencia_max_inyeccion.energia_en(resolucion).wh
         acciones: list[AccionDespacho] = []
         vertidos: list[list[int]] = [[] for _ in escenarios]
@@ -294,20 +293,9 @@ class OptimizadorLP:
 
         for k in range(politica.horizonte_intervalos):
             neto_ac = round(float(carga_ac[k])) - round(float(descarga_ac[k]))
-            potencia_w = (abs(neto_ac) * 3600) // segundos
-            if neto_ac > 0:
-                accion = AccionDespacho.cargar(
-                    Potencia(min(potencia_w, bateria.potencia_max_carga.w))
-                )
-            elif neto_ac < 0:
-                accion = AccionDespacho.descargar(
-                    Potencia(min(potencia_w, bateria.potencia_max_descarga.w))
-                )
-            else:
-                accion = AccionDespacho.retener()
-
+            accion = self._accion_recortada(planta, estado, escenarios, politica, k, neto_ac)
             if not self._modelo.es_factible(bateria, estado, accion, resolucion):
-                accion = AccionDespacho.retener()  # repair conservador ante redondeo
+                accion = AccionDespacho.retener()  # última red ante bordes de redondeo
 
             estado = self._modelo.aplicar(bateria, estado, accion, resolucion)
             acciones.append(accion)
@@ -331,6 +319,67 @@ class OptimizadorLP:
                 )
 
         return tuple(acciones), tuple(tuple(v) for v in vertidos), tuple(reservas)
+
+    def _accion_recortada(
+        self,
+        planta: Planta,
+        estado: EstadoBateria,
+        escenarios: tuple[Escenario, ...],
+        politica: PoliticaDespacho,
+        k: int,
+        neto_ac_wh: int,
+    ) -> AccionDespacho:
+        """Acción entera recortada al máximo factible (SoC, potencia, throughput, nodo).
+
+        Antes el repair ante un redondeo infactible era RETENER, lo que **anulaba el
+        intervalo completo** — el caso real: la descarga de la hora más cara del día
+        se perdía porque los floors de eficiencia acumulados dejaban 1 Wh menos que
+        la trayectoria continua (hallazgo del experimento ADR-005, 2026-07-09).
+        Recortar conserva el ingreso del tramo factible y de paso re-verifica el
+        límite de retiro/inyección del nodo tras la cuantización (paga AUD-003).
+        """
+        bateria = planta.bateria
+        resolucion = politica.resolucion
+        segundos = resolucion.segundos
+        e = estado.energia_almacenada.wh
+        budget = bateria.throughput_garantia.wh - estado.throughput_acumulado.wh
+
+        if neto_ac_wh > 0:  # cargar
+            ef_c = bateria.eficiencia_carga.puntos_base
+            if ef_c == 0:
+                return AccionDespacho.retener()
+            # El retiro del nodo debe respetarse en todos los escenarios (peor caso).
+            gen_min_wh = min(
+                esc.puntos[k].generacion.energia_en(resolucion).wh for esc in escenarios
+            )
+            retiro_max_wh = planta.potencia_max_retiro.energia_en(resolucion).wh
+            tope = min(
+                bateria.potencia_max_carga.energia_en(resolucion).wh,
+                ((bateria.energia_max.wh - e) * _BASE) // ef_c,
+                (budget * _BASE) // ef_c,
+                gen_min_wh + retiro_max_wh,
+            )
+            e_red = min(neto_ac_wh, max(0, tope))
+            potencia_w = min((e_red * 3600) // segundos, bateria.potencia_max_carga.w)
+            return AccionDespacho.cargar(Potencia(potencia_w)) if potencia_w else (
+                AccionDespacho.retener()
+            )
+
+        if neto_ac_wh < 0:  # descargar
+            ef_d = bateria.eficiencia_descarga.puntos_base
+            tope = min(
+                bateria.potencia_max_descarga.energia_en(resolucion).wh,
+                ((e - bateria.energia_min.wh) * ef_d) // _BASE,
+                (budget * ef_d) // _BASE,
+                planta.potencia_max_inyeccion.energia_en(resolucion).wh,
+            )
+            e_red = min(-neto_ac_wh, max(0, tope))
+            potencia_w = min((e_red * 3600) // segundos, bateria.potencia_max_descarga.w)
+            return AccionDespacho.descargar(Potencia(potencia_w)) if potencia_w else (
+                AccionDespacho.retener()
+            )
+
+        return AccionDespacho.retener()
 
     def _reserva_factible(
         self,

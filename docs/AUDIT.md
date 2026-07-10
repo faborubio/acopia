@@ -25,19 +25,21 @@
 |---|---|---|---|
 | AUD-001 | **Autodescarga de la batería** ignorada en `ModeloBateria` (documentado en `modelo_bateria.py`). | F0 | Pendiente — modelarla como pérdida por intervalo cuando haya datos de un BESS real. |
 | AUD-002 | **C-rate implícito** en `potencia_max_*`; no es parámetro propio de `Bateria` (ADR-003 lo nombra). | F0 | Pendiente — explícito cuando se modele un activo real. |
-| AUD-003 | **Re-clamp del límite de retiro en la cuantización**: la restricción vive en el LP; el redondeo a enteros no re-verifica el límite de retiro del nodo. | F1 | Pendiente — clamp conservador análogo a `_reserva_factible` (F4). |
 | AUD-004 | **SoC inicial fuera de banda se rechaza** (`ValueError` → 422) en vez de permitir converger a la banda. | F1 | Pendiente — modo "converger" opt-in de la política. |
 | AUD-005 | **Ventana régimen-local sin sweep**: 720 obs replica la config ganadora de enero; falta barrido de ventana/hiperparámetros y una regla de selección por régimen (hidrología/estación). | F3 | Pendiente — prioritaria antes de afirmar cifras de forecast (enmienda ADR-002.1). |
 | AUD-006 | **Backtest de política corre con naive**; falta la corrida con LSTM-ventana como forecaster de la política (~25 s/día). | F3 | Pendiente. |
 | AUD-007 | **Escenarios del estocástico vienen del bootstrap del naive**, no del forecaster avanzado. | F3 | Pendiente — alimentar ADR-004 con escenarios del LSTM. |
 | AUD-008 | **Gatillo de desvío mono-señal**: mira solo generación acumulada; no CMg ni estado de batería. | F3 | Pendiente. |
-| AUD-009 | **LSTM/SARIMAX entrenan por llamada**; sin persistencia de pesos ni modo entrenar-una-vez. | F2 | Pendiente — costoso a escala, aceptable en portafolio. |
+| AUD-009 | **LSTM/SARIMAX/DRL entrenan por llamada**; sin persistencia de pesos ni modo entrenar-una-vez (el PPO de `OptimizadorDRL` re-entrena en cada `optimizar`). | F2 (F4 lo extiende) | Pendiente — costoso a escala, aceptable en portafolio. |
 | AUD-010 | **`RastroForecast` no se persiste** junto al `RastroDespacho` (enmienda ADR-007.1). | F2 | Pendiente — fase de persistencia real (Timescale). |
 | AUD-011 | **El rastro no persiste la política completa** (batería/resolución llegan por inyección al servidor MCP). | F4 | Pendiente — fase de persistencia real, junto con AUD-010. |
 | AUD-012 | **Telemetría de planta sintética** (plant-level no es pública, SAD §6.2): la reoptimización intradía se demuestra con desvíos sintéticos. | F3 | Aceptada para portafolio — datos reales exigen un activo real (fase 5). |
 | AUD-013 | **Escenarios por ruido gaussiano** sobre el punto, no muestreo latente (MC dropout / ensembles). | F2 | Aceptada para el MVP. |
 | AUD-014 | **Falta test del optimizador con garantía de throughput casi agotada** (el caso "agotada = 0" sí está cubierto). | F1 | Pendiente — test de borde. |
 | AUD-015 | **Valor terminal por defecto `None`**: sin configurarlo, la batería puede liquidarse al fin de horizonte. | F1 | Aceptada — es una decisión del operador, documentada en `CASES.md` (precio plano). |
+| AUD-023 | **El modo DRL no co-optimiza SSCC** (`politica.reserva` → error claro): el experimento de ADR-005 es arbitraje puro; añadir la banda al espacio de acción/recompensa es trabajo de fase 5 si el DRL lo justifica. | F4 | Aceptada — coherente con ADR-005 (experimento, no producto). |
+| AUD-024 | **Valorización duplicada entre LP y DRL**: `_ingreso_esperado` y el recurso de vertido viven en ambos optimizadores (~40 líneas paralelas); extraer un helper común en `infrastructure/optimizacion/`. | F4 | Pendiente — refactor menor; se aceptó para no tocar el LP probado en la misma rebanada. |
+| AUD-025 | **La observación del DRL no incluye el throughput restante** ni la banda SSCC; con garantía holgada es irrelevante, pero un agente cerca del límite de ciclado decidiría a ciegas. | F4 | Pendiente — añadir al vector de observación si el modo DRL pasa de experimento a opción real. |
 
 ### Deuda pagada
 
@@ -50,6 +52,7 @@
 | AUD-020 | LSTM régimen-dependiente: pierde en el anual con config fija (hallazgo F2). | F2 | F3 cierre — ventana régimen-local 720 (enmienda ADR-002.1): CMg RMSE 20.3k vs 26.2k naive. |
 | AUD-021 | SARIMAX anual impráctico (ventana expansiva). | F2 | F3 cierre — la misma ventana régimen-local lo baja a segundos (no bate al naive). |
 | AUD-022 | Snapshot as-seen del forecast inexistente. | F2 | F2 — `RastroForecast` + huella SHA-256 (ADR-007.1). Persistirlo sigue vivo como AUD-010. |
+| AUD-003 | Re-clamp del límite de retiro en la cuantización + repair a RETENER que anulaba el intervalo completo. | F1 | F4 rebanada DRL — `OptimizadorLP._accion_recortada`: la acción se recorta al máximo factible (SoC, potencia, throughput, nodo) en vez de anularse. Hallazgo: el experimento ADR-005 destapó que el repair perdía la descarga de la hora más cara del día (~15% del ingreso en días reales). |
 
 ---
 
@@ -72,6 +75,31 @@
 - Valor terminal por defecto sigue siendo `None` (liquidación posible si no se configura): es una decisión del operador.
 
 ---
+
+## Fase 4 — Co-optimización SSCC + Capa MCP + modo DRL (MVP) — cerrada — 2026-07-09
+
+> Entregable del SAD §13: "Co-optimización arbitraje + SSCC en una sola función objetivo; MCP read-only + simulación; modo DRL opcional medido contra el baseline" — **completo**. Con la Fase 4 cierra el alcance de portafolio recomendado por el SAD (fases 1–4).
+
+**Qué se entregó (rebanada 3 — modo DRL, 2026-07-09):**
+- **`OptimizadorDRL`** (PPO de stable-baselines3, extra `acopia[drl]`) detrás del mismo `PuertoOptimizador` que el LP (ADR-005): entrena por llamada sobre el escenario as-seen y produce un `PlanDespacho` con acciones enteras validadas contra `ModeloBateria` e ingreso calculado por la `FuncionObjetivo` del dominio — **cifras comparables una a una con el baseline**. Determinista (semillas numpy/torch/PPO, CPU); rechaza `politica.reserva` con error claro (AUD-023).
+- **`EntornoDespacho`** (gymnasium): acción continua [-1,1] **recortada a lo físicamente factible** (SoC, potencia, throughput, nodo) — el agente no puede violar restricciones, solo perder ingreso; vertido como recurso analítico óptimo según el signo del CMg (la misma regla de recurso que el LP).
+- **`comparar_modos`** (aplicación + herramienta MCP + CLI `acopia-datos comparar-modos`): ambos modos sobre el mismo rastro as-seen, sin persistencia.
+- **Experimento medido (enero real S.GREGORIO, 3 días, forecast perfecto, PPO 30k timesteps/día, semilla 0):** captura DRL vs LP por día **97.7% / 95.1% / 94.9%** — total **96.1%**, el LP gana siempre. La postura de ADR-005 queda medida: para el arbitraje de una planta, el MILP es casi óptimo y el DRL no justifica la pérdida de interpretabilidad.
+- **El hallazgo mayor fue del baseline, no del DRL:** la primera corrida daba al DRL **104.6%** — imposible contra un óptimo. La causa: la **deriva de floors** de la eficiencia entera dejaba la descarga de la hora más cara infactible por ~1 Wh y el repair a RETENER la **anulaba entera** (~15% del ingreso del día). Arreglado con `_accion_recortada` (recorta al máximo factible; paga AUD-003); el LP subió de 869 a 946 mills (+8.9%) en los mismos 3 días. Regresión fijada en `test_cuantizacion_lp.py`; caso en `CASES.md`. **Moraleja: si el experimento supera al óptimo, audita al óptimo.**
+
+**Qué se entregó (rebanadas 1 y 2, 2026-07-02):** co-optimización arbitraje + reserva de frecuencia (ADR-010; banda simétrica por disponibilidad; comportamientos emergentes fijados por test) y capa MCP read-only (`consultar_despacho`, `explicar_despacho`, `simular`; `ExplicadorDespacho` en dominio; `simular_escenario` sin persistencia). Detalle en la bitácora (`MEMORY.md` 2026-07-02).
+
+**Verificación (todo en verde, al cierre):** ruff OK · mypy --strict 91 files 0 issues · import-linter 2 KEPT (gymnasium añadido a la frontera) · pytest **198 passed** (DRL +8, comparar_modos +4, MCP 4 herramientas +2, regresión cuantización +1) · pip-audit sin vulnerabilidades.
+
+**Vista de halcón (qué quedó débil):**
+- El PPO **entrena por llamada** (AUD-009 extendido): cada `optimizar` cuesta segundos-minutos según `total_timesteps`.
+- La comparación usa **forecast perfecto** (mide el optimizador, no el pipeline completo); comparar con forecast real + ejecución (`SimuladorEjecucion`) daría la cifra de negocio.
+- 3 días y una semilla: **direccional**, no estadística. El DRL con más presupuesto/tuning puede acercarse más al LP; nunca superarlo en el determinista.
+- La observación del DRL no ve throughput restante ni banda SSCC (AUD-025); no co-optimiza SSCC (AUD-023).
+- Valorización duplicada LP/DRL (~40 líneas, AUD-024).
+
+**Deuda generada:** AUD-023 (DRL sin SSCC, aceptada), AUD-024 (valorización duplicada), AUD-025 (observación DRL incompleta). **Deuda pagada:** AUD-003 (repair de cuantización → recorte factible).
+**Sign-off:** ✅ 2026-07-09 — entregable del SAD §13 completo; el DRL quedó donde ADR-005 lo puso: experimento medido que valida al baseline (y que de paso lo mejoró).
 
 ## Fase 3 — Robustez + backtest — cerrada — 2026-07-02
 

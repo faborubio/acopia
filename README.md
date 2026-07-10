@@ -6,13 +6,13 @@ Motor de optimización de despacho para una planta solar con batería (PV-BESS) 
 
 ## Estado
 
-**Fases 0–3 cerradas · Fase 4 en curso** (sign-offs en [`docs/AUDIT.md`](./docs/AUDIT.md)):
+**Fases 0–4 cerradas — el alcance de portafolio del SAD está completo** (sign-offs en [`docs/AUDIT.md`](./docs/AUDIT.md)):
 
 - **F0 — Scaffolding:** capas Clean Architecture, value objects enteros, `ModeloBateria` puro, property-tests (determinismo y factibilidad).
 - **F1 — Despacho determinista:** optimizador predict-then-optimize (cvxpy + HIGHS) que genera un plan **factible y rentable** con ingreso auditable; API REST.
 - **F2 — Forecaster + escenarios:** estacional-naïve, SARIMAX y **Seq2Seq-LSTM** con escenarios probabilísticos deterministas; snapshot as-seen del forecast (huella SHA-256); pipeline de ingesta de datos chilenos reales.
 - **F3 — Robustez + backtest:** optimizador **estocástico de dos etapas**, backtest de política contra el día real (esperado vs realizado vs foresight) y reoptimización intradía. Sobre CMg real 2025: el LSTM régimen-local pronostica CMg con **−23% RMSE vs naive**; 5 escenarios capturan ~100% del foresight.
-- **F4 — Co-optimización SSCC + capa MCP (en curso):** arbitraje + **reserva de frecuencia** en una sola función objetivo (ADR-010) y **servidor MCP read-only** para interrogar y simular el plan. Falta: modo DRL medido contra el baseline.
+- **F4 — Co-optimización SSCC + capa MCP + modo DRL:** arbitraje + **reserva de frecuencia** en una sola función objetivo (ADR-010), **servidor MCP read-only** para interrogar y simular el plan, y **modo DRL (PPO)** medido contra el baseline (ADR-005): captura el **96%** del óptimo determinista en días reales — y el experimento destapó (y pagó) una debilidad de la cuantización del LP (+8.9% de ingreso del baseline).
 
 ```bash
 uv run uvicorn acopia.interfaces.rest.app:app --reload   # API en http://127.0.0.1:8000/docs
@@ -91,4 +91,5 @@ Con la planta modelo armada, los backtests reproducibles:
 acopia-datos backtest --planta datos/planta.csv --folds 5 \
   --modelos naive,sarimax,lstm --ventana-entrenamiento 720   # error de forecast por modelo
 acopia-datos backtest-politica --planta datos/planta.csv     # ingreso esperado vs realizado vs foresight
+acopia-datos comparar-modos --planta datos/planta.csv        # ADR-005: DRL (PPO) vs baseline LP
 ```

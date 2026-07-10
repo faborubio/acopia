@@ -13,6 +13,9 @@ Subcomandos:
   Usa ``--por-posicion`` (con ``--recortar`` si difieren en largo) para series de años distintos.
 - ``backtest``: compara forecasters (naive, SARIMAX, LSTM) sobre un CSV de planta con
   un backtest rodante y reporta RMSE/MAPE por serie (comparación honesta de ADR-002).
+- ``comparar-modos``: el experimento de ADR-005 — DRL (PPO) vs baseline determinista
+  (LP) sobre días reales con **forecast perfecto** (mide la calidad del optimizador,
+  no la del forecaster). Requiere el extra ``acopia[drl]``.
 
 La generación PV no tiene API horaria pública: se exporta desde solar.minenergia.cl
 y se pasa a ``alinear`` (con --col-gen/--escala-gen según el formato exportado).
@@ -189,6 +192,23 @@ def _construir_parser() -> argparse.ArgumentParser:
         "--retiro-w", type=int, default=0,
         help="Retiro máx. de red (W); 0 = solo PV+BESS (default, típico solar)",
     )
+
+    comparar = sub.add_parser(
+        "comparar-modos",
+        help="ADR-005: modo DRL (PPO) vs baseline determinista (LP) sobre días reales",
+    )
+    comparar.add_argument("--planta", required=True, help="CSV de planta (timestamp,gen,cmg)")
+    comparar.add_argument("--dias", type=int, default=3, help="Últimos N días completos")
+    comparar.add_argument("--horizonte", type=int, default=24)
+    comparar.add_argument(
+        "--timesteps", type=int, default=30_000,
+        help="Presupuesto de entrenamiento PPO por día (más = mejor y más lento)",
+    )
+    comparar.add_argument("--semilla", type=int, default=0)
+    comparar.add_argument("--capacidad-wh", type=int, default=2_000, help="Batería (Wh)")
+    comparar.add_argument("--potencia-w", type=int, default=500, help="Carga/descarga (W)")
+    comparar.add_argument("--iny-w", type=int, default=1_000_000, help="Techo de inyección (W)")
+    comparar.add_argument("--retiro-w", type=int, default=0, help="Retiro máx. de red (W)")
     return parser
 
 
@@ -244,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
             )
     elif args.comando == "backtest-politica":
         _ejecutar_backtest_politica(args)
+    elif args.comando == "comparar-modos":
+        _ejecutar_comparar_modos(args)
     return 0
 
 
@@ -309,6 +331,107 @@ def _ejecutar_backtest_politica(args: argparse.Namespace) -> None:
     print(f"  ingreso foresight : {resultado.ingreso_foresight_mills:>12,} mills")
     print(f"  captura vs techo  : {resultado.captura_vs_foresight_bp / 100:>11.1f} %")
     print(f"  vertido realizado : {vertida:>12,} Wh · acciones reparadas: {reparadas}")
+
+
+def _ejecutar_comparar_modos(args: argparse.Namespace) -> None:
+    """Experimento de ADR-005: LP vs PPO por día real, con forecast perfecto.
+
+    Forecast perfecto = el escenario es el día observado. Así la brecha mide SOLO la
+    calidad del optimizador (programa de batería), sin confundirla con el error de
+    forecast. El baseline LP es el óptimo del problema: la pregunta honesta es
+    cuánto se le acerca el DRL, no si lo supera.
+    """
+    from acopia.application.comparar_modos import comparar_modos
+    from acopia.domain.entities.bateria import Bateria
+    from acopia.domain.entities.escenario import Escenario, PuntoPronostico
+    from acopia.domain.entities.estado_bateria import EstadoBateria
+    from acopia.domain.entities.planta import Planta
+    from acopia.domain.entities.politica_despacho import Modo, Objetivo, PoliticaDespacho
+    from acopia.domain.entities.rastro import RastroDespacho
+    from acopia.domain.value_objects.eficiencia import Eficiencia
+    from acopia.domain.value_objects.energia import Energia
+    from acopia.domain.value_objects.intervalo import Intervalo
+    from acopia.domain.value_objects.potencia import Potencia
+    from acopia.domain.value_objects.soc import Soc
+    from acopia.infrastructure.optimizacion.optimizador_lp import OptimizadorLP
+
+    try:
+        from acopia.infrastructure.drl.optimizador_drl import OptimizadorDRL
+    except ImportError:
+        print("comparar-modos requiere el extra acopia[drl] (stable-baselines3 + gymnasium)")
+        raise SystemExit(1) from None
+
+    observaciones = GatewayCSV(args.planta).cargar()
+    horizonte = args.horizonte
+    if len(observaciones) < horizonte * args.dias:
+        raise SystemExit(
+            f"Se necesitan {horizonte * args.dias} observaciones para "
+            f"{args.dias} días; hay {len(observaciones)}"
+        )
+
+    bateria = Bateria(
+        capacidad=Energia(args.capacidad_wh),
+        potencia_max_carga=Potencia(args.potencia_w),
+        potencia_max_descarga=Potencia(args.potencia_w),
+        eficiencia_carga=Eficiencia.de_porcentaje(95),
+        eficiencia_descarga=Eficiencia.de_porcentaje(95),
+        soc_min=Soc.de_porcentaje(0),
+        soc_max=Soc.de_porcentaje(100),
+        throughput_garantia=Energia(1_000_000_000),
+    )
+    planta = Planta("planta-modelo", bateria, Potencia(args.iny_w), Potencia(args.retiro_w))
+    politica = PoliticaDespacho(
+        id="comparar-modos",
+        version=1,
+        objetivo=Objetivo.MAX_INGRESO,
+        horizonte_intervalos=horizonte,
+        resolucion=Intervalo.de_minutos(60),
+        semilla=args.semilla,
+        modo=Modo.PREDICT_THEN_OPTIMIZE,
+    )
+    optimizador_lp = OptimizadorLP()
+    optimizador_drl = OptimizadorDRL(total_timesteps=args.timesteps)
+
+    print(
+        f"Comparación de modos (ADR-005): {args.dias} días x {horizonte}h · "
+        f"forecast perfecto · PPO {args.timesteps} timesteps/día · semilla {args.semilla}"
+    )
+    print(
+        f"{'día':>4s} | {'LP (mills)':>12s} | {'DRL (mills)':>12s} | {'delta':>10s} | captura DRL"
+    )
+    print("-" * 66)
+    total_lp = total_drl = 0
+    inicio = len(observaciones) - horizonte * args.dias
+    for d in range(args.dias):
+        tramo = observaciones[inicio + d * horizonte : inicio + (d + 1) * horizonte]
+        escenario = Escenario(
+            tuple(PuntoPronostico(o.generacion, o.cmg) for o in tramo)
+        )
+        rastro = RastroDespacho(
+            politica_id=politica.id,
+            politica_version=politica.version,
+            semilla=politica.semilla,
+            estado_inicial=EstadoBateria(Energia(0)),
+            escenarios=(escenario,),
+        )
+        r = comparar_modos(optimizador_lp, optimizador_drl, planta, rastro, politica)
+        captura = (
+            r.ingreso_drl_mills / r.ingreso_deterministico_mills * 100
+            if r.ingreso_deterministico_mills
+            else float("nan")
+        )
+        print(
+            f"{d:>4d} | {r.ingreso_deterministico_mills:>12,} | "
+            f"{r.ingreso_drl_mills:>12,} | {r.delta_mills:>10,} | {captura:10.1f} %"
+        )
+        total_lp += r.ingreso_deterministico_mills
+        total_drl += r.ingreso_drl_mills
+    print("-" * 66)
+    captura_total = total_drl / total_lp * 100 if total_lp else float("nan")
+    print(
+        f"{'TOT':>4s} | {total_lp:>12,} | {total_drl:>12,} | "
+        f"{total_drl - total_lp:>10,} | {captura_total:10.1f} %"
+    )
 
 
 if __name__ == "__main__":

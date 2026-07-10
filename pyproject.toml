@@ -24,6 +24,8 @@ forecasting = ["torch>=2.2"]
 ingesta = ["openpyxl>=3.1"]
 # Capa MCP read-only + simulación (Fase 4): `python -m acopia.interfaces.mcp.servidor`.
 mcp = ["fastmcp>=3"]
+# Modo DRL opcional (ADR-005): experimento medido contra el baseline determinista.
+drl = ["stable-baselines3>=2.4", "gymnasium>=1.0"]
 dev = [
     "pytest>=8.2",
     "hypothesis>=6.100",
@@ -66,6 +68,7 @@ mypy_path = "src"
 module = [
     "cvxpy", "cvxpy.*", "statsmodels", "statsmodels.*",
     "torch", "torch.*", "openpyxl", "openpyxl.*",
+    "stable_baselines3", "stable_baselines3.*", "gymnasium", "gymnasium.*",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"
@@ -95,6 +98,7 @@ forbidden_modules = [
     "cvxpy",
     "pyomo",
     "stable_baselines3",
+    "gymnasium",
     "sqlalchemy",
     "fastapi",
     "pydantic",

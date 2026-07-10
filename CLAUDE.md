@@ -53,10 +53,13 @@ Python 3.12+ · FastAPI · FastMCP · cvxpy/Pyomo + solver MILP · PyTorch (Seq2
 
 ## Estado actual
 
-Ver `MEMORY.md` (fuente de verdad del avance). **Fases 0–3 cerradas** (sign-offs en
-`docs/AUDIT.md`); **Fase 4 en curso**: co-optimización SSCC (rebanada 1, ADR-010) y capa
-MCP read-only (rebanada 2) entregadas. La **alineación con el Método está ejecutada**
-(2026-07-09: SAD v1.1.0, registro `AUD-NNN`, docs poblados, DoD arriba, pip-audit).
-**Próxima acción: Fase 4 rebanada 3 — modo DRL opcional** (ADR-005): experimento medido
-contra el baseline determinista + herramienta MCP `comparar_modos`. Ojo disco: ~3.6 GB
-libres; stable-baselines3 + gymnasium caben pero justo.
+Ver `MEMORY.md` (fuente de verdad del avance). **Fases 0–4 cerradas** (sign-offs en
+`docs/AUDIT.md`): **el alcance de portafolio del SAD §13 está completo** — despacho
+determinista, forecaster + escenarios, robustez + backtest, co-optimización SSCC,
+capa MCP y modo DRL medido (captura 96% del LP; el experimento destapó y pagó una
+debilidad de la cuantización del baseline, AUD-003). La Fase 5 (potencia de
+suficiencia, multi-planta, nube) es **"solo con tracción"** por regla del Método.
+**Próxima acción:** no hay trabajo de fases pendiente; quedan las decisiones abiertas
+de `MEMORY.md` (rotar la key SIP — seguridad, pendiente del usuario —, renombrar la
+carpeta local `ergia` → `acopia`, dominios/INAPI) y, si se retoma, la deuda viva
+priorizada del registro `AUD-NNN` (AUD-005 sweep de ventana es la primera).

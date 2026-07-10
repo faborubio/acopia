@@ -1,9 +1,9 @@
-"""Servidor MCP de Acopia (FastMCP): consulta, explicación y simulación del despacho.
+"""Servidor MCP de Acopia (FastMCP): consulta, explicación, simulación y comparación.
 
-Herramientas (§5 del SAD): ``consultar_despacho``, ``explicar_despacho`` y
-``simular_escenario``. **Decisión de seguridad:** la capa MCP es read-only +
-simulación — no envía órdenes al SCADA ni activa un plan real; simular no persiste.
-``comparar_modos`` (determinista vs DRL) llega con el modo DRL (ADR-005).
+Herramientas (§5 del SAD): ``consultar_despacho``, ``explicar_despacho``,
+``simular`` y ``comparar_modos`` (determinista vs DRL, ADR-005). **Decisión de
+seguridad:** la capa MCP es read-only + simulación — no envía órdenes al SCADA ni
+activa un plan real; nada persiste.
 
 El servidor se arma por inyección (`crear_servidor`); ``python -m
 acopia.interfaces.mcp.servidor`` levanta una demo stdio con un plan sembrado para
@@ -18,6 +18,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from acopia.application.comparar_modos import comparar_modos as comparar_modos_app
 from acopia.application.simular_escenario import simular_escenario
 from acopia.domain.entities.plan_despacho import PlanDespacho
 from acopia.domain.entities.planta import Planta
@@ -48,8 +49,13 @@ def crear_servidor(
     optimizador: PuertoOptimizador,
     planta: Planta,
     politica: PoliticaDespacho,
+    optimizador_drl: PuertoOptimizador | None = None,
 ) -> FastMCP:
-    """Arma el servidor MCP sobre los puertos del dominio (read-only + simulación)."""
+    """Arma el servidor MCP sobre los puertos del dominio (read-only + simulación).
+
+    ``optimizador_drl`` habilita ``comparar_modos`` (ADR-005); si es ``None`` la
+    herramienta existe pero responde con un error claro (extra ``acopia[drl]``).
+    """
     servidor: FastMCP = FastMCP(
         name="acopia",
         instructions=(
@@ -114,6 +120,32 @@ def crear_servidor(
             "plan_simulado": _resumen_plan("(simulado, no persistido)", resultado.plan_simulado),
         }
 
+    @servidor.tool
+    def comparar_modos(plan_id: str) -> dict[str, Any]:
+        """Determinista vs DRL sobre el mismo escenario as-seen del plan (ADR-005).
+
+        Entrena el agente DRL al vuelo (puede tardar). El baseline auditable sigue
+        siendo el determinista: esta herramienta mide, no reemplaza. Sin efectos.
+        """
+        if optimizador_drl is None:
+            raise ValueError(
+                "El modo DRL no está disponible en este servidor: "
+                "instala el extra acopia[drl] (stable-baselines3 + gymnasium)"
+            )
+        _, rastro = repositorio.obtener(plan_id)
+        resultado = comparar_modos_app(optimizador, optimizador_drl, planta, rastro, politica)
+        return {
+            "plan_id": plan_id,
+            "ingreso_deterministico_mills": resultado.ingreso_deterministico_mills,
+            "ingreso_drl_mills": resultado.ingreso_drl_mills,
+            "delta_mills": resultado.delta_mills,
+            "brecha_bp": resultado.brecha_bp,
+            "plan_deterministico": _resumen_plan(
+                "(deterministico, no persistido)", resultado.plan_deterministico
+            ),
+            "plan_drl": _resumen_plan("(drl, no persistido)", resultado.plan_drl),
+        }
+
     return servidor
 
 
@@ -171,7 +203,16 @@ def _demo() -> FastMCP:
     resultado = PlanificarDespacho(optimizador, repositorio).ejecutar(
         planta, EstadoBateria(Energia(20_000)), escenario, politica
     )
-    servidor = crear_servidor(repositorio, optimizador, planta, politica)
+    optimizador_drl = None
+    try:
+        from acopia.infrastructure.drl.optimizador_drl import OptimizadorDRL
+
+        optimizador_drl = OptimizadorDRL(total_timesteps=24_576)
+    except ImportError:
+        print("(comparar_modos sin DRL: instala acopia[drl])", file=sys.stderr)
+    servidor = crear_servidor(
+        repositorio, optimizador, planta, politica, optimizador_drl=optimizador_drl
+    )
     # A stderr: en transporte stdio, stdout es el canal JSON-RPC del MCP.
     print(f"Plan demo sembrado: plan_id={resultado.plan_id}", file=sys.stderr)
     return servidor

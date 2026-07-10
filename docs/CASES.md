@@ -114,6 +114,11 @@
 - **Comportamiento esperado:** es correcto y deseado — la co-optimización de ADR-010 lo permite mientras respete nodo, SoC y throughput. Se fija como invariante, no se "corrige".
 - **Cubierto por:** ✅ `test_comprar_energia_para_vender_disponibilidad` (`tests/infrastructure/test_cooptimizacion_sscc.py`).
 
+### Deriva de floors de eficiencia: la cuantización anulaba la hora más cara
+- **Escenario:** la eficiencia entera (floor) acumula una deriva de Wh a lo largo del día: tras N cargas, la batería entera tiene menos energía que la trayectoria continua del LP. La descarga planificada de la **última hora (la más cara)** queda infactible por unos pocos Wh.
+- **Comportamiento esperado:** recortar la acción al máximo factible (SoC, potencia, throughput, nodo), no anularla. El repair antiguo (RETENER) perdía el intervalo completo: ~15% del ingreso en días reales de enero. Descubierto porque el **experimento DRL de ADR-005 "superaba" al LP** — le ganaba al repair, no al óptimo.
+- **Cubierto por:** ✅ `test_la_deriva_de_floors_recorta_la_descarga_en_vez_de_anularla` (`tests/infrastructure/test_cuantizacion_lp.py`) + `OptimizadorLP._accion_recortada` (paga AUD-003).
+
 ### SSCC emergente: sin retiro de red, absorber exige estar inyectando
 - **Escenario:** planta con `retiro_max = 0`: para absorber la activación a bajar (cargar +R) sin retirar de la red, el punto de conexión exige **estar inyectando ≥ R**.
 - **Comportamiento esperado:** el LP reparte óptimamente entre vender e inyectar de respaldo (en el test, d = R = 5 kW). Moraleja de testing: fijar invariantes físicos, no expectativas ingenuas — el LP ganó dos veces.

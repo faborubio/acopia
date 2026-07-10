@@ -6,9 +6,9 @@
 
 - **Fase:** 2 **CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0, 1 y 2 completas.
 - **Fase 3 CERRADA** (sign-off 2026-07-02 en `docs/AUDIT.md`). Fases 0–3 completas. **Hallazgo estrella:** el LSTM entrenado régimen-local (ventana 720 obs) recupera la ventaja en el anual — CMg RMSE **20.3k vs 26.2k naive (−23%)**; con historial completo perdía (38.9k). La régimen-dependencia de Fase 2 quedó explicada y revertida.
-- **Alineación con el Método: EJECUTADA (2026-07-09, bitácora abajo).** Los 5 pasos completos: TROUBLESHOOTING/CASES poblados, SAD v1.1.0 (ADR-010 + enmiendas ADR-002.1/007.1 + historial), registro `AUD-NNN` en AUDIT, README al día, DoD de 7 pasos en CLAUDE.md, pip-audit en el toolchain.
-- **PRÓXIMA ACCIÓN (sesión nueva): Fase 4 rebanada 3 — modo DRL opcional** (ADR-005, abajo).
-- **Fase 4 en curso — rebanadas 1 (co-optimización SSCC, §3.0) y 2 (capa MCP, §5) completas.** Pendiente: **rebanada 3 — modo DRL opcional** (ADR-005, experimento medido contra el baseline; incluye la herramienta MCP `comparar_modos`). Ojo disco: **3.6 GB libres** — stable-baselines3 + gymnasium caben pero justo; considerar liberar espacio antes.
+- **Fase 4 CERRADA (sign-off 2026-07-09 en `docs/AUDIT.md`). El alcance de portafolio del SAD §13 (fases 1–4) está COMPLETO.** Rebanada 3 (modo DRL, ADR-005) entregada: PPO tras `PuertoOptimizador`, `comparar_modos` (app + MCP + CLI), experimento medido: **DRL captura 96.1% del LP** en días reales de enero. **Hallazgo estrella: el experimento destapó que el repair a RETENER de la cuantización del LP anulaba la hora más cara del día** (deriva de floors de eficiencia, ~15% del ingreso) → `_accion_recortada` recorta al factible y el LP subió +8.9% (paga AUD-003). Bitácora abajo.
+- **Alineación con el Método: EJECUTADA (2026-07-09, bitácora abajo).** TROUBLESHOOTING/CASES poblados, SAD v1.1.0 (ADR-010 + enmiendas ADR-002.1/007.1 + historial), registro `AUD-NNN`, README al día, DoD en CLAUDE.md, pip-audit.
+- **PRÓXIMA ACCIÓN:** ninguna fase pendiente (Fase 5 = "solo con tracción"). Quedan: rotar la key SIP (usuario, seguridad), renombrar carpeta `ergia`→`acopia`, dominios/INAPI, y la deuda viva del registro (AUD-005 sweep de ventana es la prioritaria si se retoma).
 - **Servidor MCP activo:** `.mcp.json` local (git-ignored) apunta a `python -m acopia.interfaces.mcp.servidor` (demo stdio con plan sembrado). Herramientas: `consultar_despacho`, `explicar_despacho`, `simular`.
 - **Deuda conocida de la capa MCP:** el rastro no persiste la batería/resolución (el servidor las recibe por inyección); persistir la política completa junto al rastro es deuda para la fase de persistencia real (Timescale).
 - **Datos disponibles:** `datos/planta.csv` (enero, 744 h) y `datos/planta_2025.csv` (año, 8754 h). Comandos reproducibles: `acopia-datos backtest --ventana-entrenamiento 720` y `acopia-datos backtest-politica` (ver bitácora).
@@ -16,6 +16,16 @@
 - **Datos reales (cómo obtenerlos) — ver bitácora 2026-06-29 "API real del Coordinador":** la vía práctica es **descarga manual del XLS** de CMg (una barra, rango de fechas) + exportar generación del Explorador Solar, y unir con `acopia-datos alinear --por-posicion`. La API existe pero NO conviene para bulk (ver abajo).
 
 ## Bitácora
+
+### 2026-07-09 — CIERRE de Fase 4: modo DRL (ADR-005) + el hallazgo del repair
+- **`OptimizadorDRL`** (PPO, extra `acopia[drl]`: stable-baselines3 2.9 + gymnasium 1.3, instalaron limpio; disco ya no es problema: 14 GB libres tras limpieza del usuario) tras el mismo `PuertoOptimizador`: entrena por llamada (patrón LSTM, AUD-009), rollout determinista, acciones validadas contra `ModeloBateria`, ingreso por `FuncionObjetivo` — comparable 1:1 con el LP. Rechaza SSCC (AUD-023).
+- **`EntornoDespacho`** (gymnasium): acción [-1,1] recortada a lo factible (el agente no puede violar la física); vertido = recurso analítico óptimo por signo del CMg (misma regla que el LP); recompensa escalada; muestreo de escenarios por `probabilidad_bp`. gamma=1.0 (horizonte finito).
+- **`comparar_modos`**: aplicación (re-optimiza el rastro as-seen con ambos modos, `replace(politica, modo=...)` operacional sin re-versionar), herramienta MCP (4ª del servidor; error claro sin el extra) y CLI `acopia-datos comparar-modos` (forecast perfecto: mide al optimizador, no al forecaster).
+- **Experimento (enero real, 3 días, 30k timesteps/día, semilla 0): primera corrida DRL 104.6% del LP — imposible contra un óptimo → auditoría del baseline.** Diagnóstico: la deriva de floors de la eficiencia entera deja la descarga de la **hora 23 (la más cara)** infactible por ~1 Wh; el repair a RETENER la anulaba entera (días 1-2: −51/−35 mills, ~15%). Fix: **`OptimizadorLP._accion_recortada`** — recorta al máximo factible (SoC/potencia/throughput/nodo, retiro en el peor escenario), paga **AUD-003**; regresión en `test_cuantizacion_lp.py`; caso en CASES. **Resultado final: LP 946 mills (antes 869, +8.9%), DRL 909 → captura 96.1% (97.7/95.1/94.9 por día). El LP gana siempre: ADR-005 medido y confirmado.**
+- Moraleja (a CASES/AUDIT): **si el experimento supera al óptimo, audita al óptimo.** El valor del DRL fue estresar al baseline.
+- Deuda nueva: AUD-023 (DRL sin SSCC, aceptada), AUD-024 (valorización duplicada LP/DRL), AUD-025 (obs del DRL sin throughput/banda). AUD-009 extendida al PPO.
+- Verde: ruff OK · mypy(91) OK · import-linter 2 KEPT (+gymnasium prohibido en domain) · pytest **198 passed** (+15) · pip-audit limpio.
+- **Sign-off Fase 4:** ✅ en `docs/AUDIT.md`. **Portafolio (fases 1–4) completo**; Fase 5 solo con tracción.
 
 ### 2026-07-09 — Alineación con el Método EJECUTADA (plan de 5 pasos completo)
 - **1. `docs/TROUBLESHOOTING.md`** dejó de estar vacío: 4 incidentes reales (disco 0 GB corrompe cachés; API v4 del Coordinador inviable para bulk; stdout corrompía el JSON-RPC del MCP stdio; SARIMAX anual impráctico → `--ventana-entrenamiento`).
