@@ -60,7 +60,7 @@ capa MCP y modo DRL medido (captura 96% del LP; el experimento destapó y pagó 
 debilidad de la cuantización del baseline, AUD-003). La Fase 5 (potencia de
 suficiencia, multi-planta, nube) es **"solo con tracción"** por regla del Método.
 **Próxima acción:** no hay trabajo de fases pendiente; quedan las decisiones abiertas
-de `MEMORY.md` (renombrar la carpeta local `ergia` → `acopia` — script listo en
-`ProyectosPortafolio/` —, dominios/INAPI) y, si se retoma, la deuda viva priorizada
+de `MEMORY.md` (dominios/INAPI) y, si se retoma, la deuda viva priorizada
 del registro `AUD-NNN` (AUD-005 sweep de ventana es la primera). La key SIP expuesta
-en junio ya fue rotada (2026-07-09).
+en junio ya fue rotada (2026-07-09). La carpeta local ya se llama `acopia`
+(rename ejecutado y verificado el 2026-07-11).
