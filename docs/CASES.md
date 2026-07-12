@@ -107,7 +107,13 @@
 ### Régimen-dependencia del CMg (el hallazgo estrella de F2–F3)
 - **Escenario:** el LSTM que ganaba con 1 mes de historia (−36% CMg RMSE vs naive en enero) **pierde contra el naive en el backtest anual** con los mismos hiperparámetros (38.9k vs 26.2k). El CMg cambia de régimen (hidrología, gas, congestión) y una config fija no lo sigue.
 - **Comportamiento esperado:** entrenamiento **régimen-local** — `--ventana-entrenamiento 720` (30 días) entrena con las últimas N obs; el LSTM recupera la ventaja anual (CMg RMSE **20.3k vs 26.2k naive, −23%**). Es la evidencia empírica del riesgo que ADR-002 anticipó (enmienda 2026-07-09 en el SAD).
-- **Cubierto por:** ✅ `test_ventana_de_entrenamiento_recorta_la_historia`, `test_ventana_expansiva_por_defecto` (`tests/application/test_backtest.py`) + cifras en `docs/AUDIT.md` (cierres de F2 y F3). Ojo: la ventana 720 no fue barrida (AUD-005).
+- **Cubierto por:** ✅ `test_ventana_de_entrenamiento_recorta_la_historia`, `test_ventana_expansiva_por_defecto` (`tests/application/test_backtest.py`) + cifras en `docs/AUDIT.md` (cierres de F2 y F3). La ventana fue barrida el 2026-07-12 (ver caso siguiente).
+
+### La curva de sensibilidad de la ventana régimen-local (sweep de AUD-005)
+- **Escenario:** la ventana 720 replicaba la config ganadora de enero sin barrido — ¿es un mínimo real o un accidente? Sweep con el protocolo del anual (7 folds × 24 h, `planta_2025.csv`, LSTM 48/32/250, semilla 0), variando solo `--ventana-entrenamiento`.
+- **Comportamiento observado (CMg RMSE):** 168→**32.7k** (pierde vs naive: muy poca historia para aprender) · 336→**20.4k** · 720→**20.3k** (mínimo) · 1440→**21.7k** · 2160→**21.5k** · 4320→**36.3k** (pierde: el cambio de régimen diluye el patrón reciente) · referencias: naive 26.2k, historial completo 38.9k. La curva tiene forma de U: **meseta amplia 336–2160** donde cualquier ventana bate al naive (−17% a −23%) y colapso en ambos extremos.
+- **Lectura:** la elección de 720 **no es frágil** (meseta ancha), y la régimen-dependencia del CMg queda descrita por una curva completa, no por dos puntos. En gen RMSE el naive sigue ganando en todas las ventanas (consistente con F2–F3).
+- **Cubierto por:** ✅ evidencia en enmienda ADR-002.2 (SAD) y AUD-005 (registro); reproducible con `acopia-datos backtest --planta datos/planta_2025.csv --folds 7 --modelos lstm --ventana-entrenamiento N`.
 
 ### SSCC emergente: comprar energía de la red para vender disponibilidad
 - **Escenario:** la banda de reserva paga más que el spot; el LP decide **retirar de la red** para tener energía que respalde la banda (arbitraje entre productos, no entre horas).

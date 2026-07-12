@@ -18,3 +18,6 @@ dist/
 
 # Config MCP local (ruta absoluta de esta maquina)
 .mcp.json
+
+# Permisos locales de Claude Code (rutas absolutas de esta maquina)
+.claude/

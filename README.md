@@ -23,6 +23,17 @@ La capa MCP expone `consultar_despacho`, `explicar_despacho` ("¿por qué cargas
 y `simular` ("¿y si el CMg colapsa en la punta?") — solo lectura y simulación, nada se ejecuta
 ni persiste.
 
+## Dashboard demo
+
+Con la API arriba, **`http://127.0.0.1:8000/demo`** sirve el dashboard del día típico
+chileno (ADR-011): el plan de despacho sobre la duck curve (CMg, PV, acciones de la
+batería y SoC, con el **motivo** de cada decisión en el tooltip) y el pipeline de datos
+que alimenta al motor. HTML autocontenido — sin CDN, sin framework de frontend, legible
+sin JavaScript (KPIs y tabla server-side), modo claro/oscuro. Es el mismo día sembrado
+que interroga la demo MCP.
+
+![Dashboard demo de Acopia](./docs/img/dashboard_demo.png)
+
 ## Estructura
 
 ```text

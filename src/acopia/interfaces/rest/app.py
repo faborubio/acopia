@@ -7,6 +7,7 @@ infraestructura y el caso de uso. Permite inyectar dobles en tests.
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 
 from acopia.application.planificar_despacho import PlanificarDespacho
 from acopia.domain.ports.puerto_optimizador import PuertoOptimizador
@@ -15,6 +16,7 @@ from acopia.infrastructure.optimizacion.optimizador_lp import OptimizadorLP
 from acopia.infrastructure.persistencia.repositorio_planes_memoria import (
     RepositorioPlanesEnMemoria,
 )
+from acopia.interfaces.rest.dashboard import render_dashboard
 from acopia.interfaces.rest.esquemas import PlanDTO, PlanificarRequest
 
 
@@ -31,6 +33,11 @@ def crear_app(
     @app.get("/salud")
     def salud() -> dict[str, str]:
         return {"estado": "ok"}
+
+    @app.get("/demo", response_class=HTMLResponse)
+    def demo() -> HTMLResponse:
+        """Dashboard demo: el día chileno sembrado como reporte HTML autocontenido."""
+        return HTMLResponse(render_dashboard())
 
     @app.post("/planes", response_model=PlanDTO)
     def planificar(peticion: PlanificarRequest) -> PlanDTO:

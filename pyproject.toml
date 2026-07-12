@@ -58,6 +58,11 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 # N818: "AccionInfactible" es término del dominio (español); no forzamos sufijo Error.
 ignore = ["N818"]
 
+[tool.ruff.lint.per-file-ignores]
+# El dashboard embebe un template HTML/CSS/JS: líneas largas y el menos tipográfico (−)
+# de la UI son intencionales. Solo aplica al template, no al resto del código Python.
+"src/acopia/interfaces/rest/dashboard.py" = ["E501", "RUF001"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

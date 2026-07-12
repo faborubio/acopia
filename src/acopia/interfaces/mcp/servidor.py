@@ -151,58 +151,9 @@ def crear_servidor(
 
 def _demo() -> FastMCP:
     """Demo stdio: planta modelo + un plan de arbitraje sembrado, listo para interrogar."""
-    from acopia.application.planificar_despacho import PlanificarDespacho
-    from acopia.domain.entities.bateria import Bateria
-    from acopia.domain.entities.escenario import Escenario, PuntoPronostico
-    from acopia.domain.entities.estado_bateria import EstadoBateria
-    from acopia.domain.entities.politica_despacho import Modo, Objetivo
-    from acopia.domain.value_objects.eficiencia import Eficiencia
-    from acopia.domain.value_objects.energia import Energia
-    from acopia.domain.value_objects.intervalo import Intervalo
-    from acopia.domain.value_objects.potencia import Potencia
-    from acopia.domain.value_objects.precio import Precio
-    from acopia.domain.value_objects.soc import Soc
-    from acopia.infrastructure.optimizacion.optimizador_lp import OptimizadorLP
-    from acopia.infrastructure.persistencia.repositorio_planes_memoria import (
-        RepositorioPlanesEnMemoria,
-    )
+    from acopia.interfaces.demo_dia import sembrar_dia_demo
 
-    bateria = Bateria(
-        capacidad=Energia(100_000),
-        potencia_max_carga=Potencia(50_000),
-        potencia_max_descarga=Potencia(50_000),
-        eficiencia_carga=Eficiencia.de_porcentaje(95),
-        eficiencia_descarga=Eficiencia.de_porcentaje(95),
-        soc_min=Soc.de_porcentaje(0),
-        soc_max=Soc.de_porcentaje(100),
-        throughput_garantia=Energia(1_000_000_000),
-    )
-    planta = Planta("planta-demo", bateria, Potencia(80_000), Potencia(0))
-    politica = PoliticaDespacho(
-        id="arbitraje-demo",
-        version=1,
-        objetivo=Objetivo.MAX_INGRESO,
-        horizonte_intervalos=24,
-        resolucion=Intervalo.de_minutos(60),
-        semilla=42,
-        modo=Modo.PREDICT_THEN_OPTIMIZE,
-    )
-    # Día chileno típico: PV de campana con CMg colapsado a mediodía y punta vespertina.
-    generacion = [0, 0, 0, 0, 0, 0, 5, 20, 45, 65, 80, 90, 95, 90, 80, 65, 45, 20, 5, 0, 0, 0, 0, 0]
-    cmg = [
-        75, 74, 73, 72, 73, 75, 70, 40, 5, 0, 0, 0, 0, 0, 3, 10, 25, 60, 95, 110, 105, 95, 85, 80,
-    ]
-    escenario = Escenario(
-        tuple(
-            PuntoPronostico(Potencia(g * 1_000), Precio(c * 1_000))
-            for g, c in zip(generacion, cmg, strict=True)
-        )
-    )
-    repositorio = RepositorioPlanesEnMemoria()
-    optimizador = OptimizadorLP()
-    resultado = PlanificarDespacho(optimizador, repositorio).ejecutar(
-        planta, EstadoBateria(Energia(20_000)), escenario, politica
-    )
+    demo = sembrar_dia_demo()
     optimizador_drl = None
     try:
         from acopia.infrastructure.drl.optimizador_drl import OptimizadorDRL
@@ -211,10 +162,14 @@ def _demo() -> FastMCP:
     except ImportError:
         print("(comparar_modos sin DRL: instala acopia[drl])", file=sys.stderr)
     servidor = crear_servidor(
-        repositorio, optimizador, planta, politica, optimizador_drl=optimizador_drl
+        demo.repositorio,
+        demo.optimizador,
+        demo.planta,
+        demo.politica,
+        optimizador_drl=optimizador_drl,
     )
     # A stderr: en transporte stdio, stdout es el canal JSON-RPC del MCP.
-    print(f"Plan demo sembrado: plan_id={resultado.plan_id}", file=sys.stderr)
+    print(f"Plan demo sembrado: plan_id={demo.plan_id}", file=sys.stderr)
     return servidor
 
 
