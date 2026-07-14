@@ -19,7 +19,7 @@ Al cerrar la sesión: escribe en `MEMORY.md` el estado y la próxima acción.
 
 ## Modo de trabajo (SDD + el Método)
 
-Specification-Driven Development. Loop: **Especificar → Implementar → Verificar → Auditar → Sign-off** (ver §12 del SAD). El proyecto se rige por el MANIFIESTO del Método (v1.1.0, `\\wsl.localhost\Ubuntu-24.04\home\faborubio\Workspace\metodo\MANIFIESTO.md`).
+Specification-Driven Development. Loop: **Especificar → Implementar → Verificar → Auditar → Sign-off** (ver §12 del SAD). El proyecto se rige por el MANIFIESTO del Método (v1.3.0, `\\wsl.localhost\Ubuntu-24.04\home\faborubio\Workspace\metodo\MANIFIESTO.md`). Al reentrar, verificar la versión vigente del MANIFIESTO: sus enmiendas aplican a este repo (la v1.2.0 fijó el estándar profesional del README; la v1.3.0, la sección `## Próxima sesión` de este archivo).
 
 - La **spec se actualiza antes que el código** (el SAD cambia solo por ADR nuevo o enmienda versionada; historial al final del SAD).
 - **Ninguna fase cierra sin su entrada en `docs/AUDIT.md`**; todo trade-off aceptado tiene su **`AUD-NNN`** en el registro de deuda.
@@ -59,10 +59,28 @@ determinista, forecaster + escenarios, robustez + backtest, co-optimización SSC
 capa MCP y modo DRL medido (captura 96% del LP; el experimento destapó y pagó una
 debilidad de la cuantización del baseline, AUD-003). La Fase 5 (potencia de
 suficiencia, multi-planta, nube) es **"solo con tracción"** por regla del Método.
-**Próxima acción:** no hay trabajo de fases pendiente; quedan las decisiones abiertas
-de `MEMORY.md` (dominios/INAPI, diferidas a propósito) y la deuda viva del registro
-`AUD-NNN` (el sweep de ventana de AUD-005 ya corrió — 720 confirmada, enmienda
-ADR-002.2; sigue viva la parte de hiperparámetros). Existe un **dashboard demo** en
-`GET /demo` (ADR-011) que comparte el día sembrado con la demo MCP. La key SIP
-expuesta en junio ya fue rotada (2026-07-09). La carpeta local ya se llama `acopia`
-(rename ejecutado y verificado el 2026-07-11).
+Existe un **dashboard demo** en `GET /demo` (ADR-011) que comparte el día sembrado
+con la demo MCP. El proyecto entró en **exploración de salida real** (2026-07-14):
+publicar la demo, piloto hardware casero y prospección de cliente en el Maule
+(detalle y evidencia en la bitácora de `MEMORY.md`).
+
+## Próxima sesión
+
+Pendientes en orden de valor; ⏸ = espera una decisión del autor.
+
+1. ⏸ **Publicar la demo** — decidir la ruta: snapshot estático del dashboard en GitHub
+   Pages (recomendada: gratis, sin superficie de ataque, conserva la interactividad) vs
+   app viva en free tier (exige Dockerfile y proteger `POST /planes`). Al decidir: ADR.
+2. ⏸ **Prospección de cliente real (Maule, cerca de Curepto)** — candidatos mapeados
+   (2026-07-14, bitácora): PMGD = calce directo del producto (Solek/Pencahue Este a
+   ~40 km; oEnergy/El Tiuque, primer PMGD+BESS de Chile, en San Javier); viñas del
+   Mataquito (Viñedos Puertas) = piloto behind-the-meter que exige adaptación.
+3. **Especificar la adaptación behind-the-meter** si se persigue la viña: señal =
+   tarifa horaria en vez de CMg + término de cargo por potencia (máximo leído, no
+   energía) en el LP. Parte con su caso en `docs/CASES.md` y su ADR.
+4. ⏸ **Piloto hardware paso 0** (costo ~USD 0): adaptador de ejecución/telemetría
+   Modbus contra Venus OS (Victron) en modo demo, antes de comprar batería. Abre con ADR.
+5. **Deuda viva del registro `AUD-NNN`**: hiperparámetros/regla por régimen (resto de
+   AUD-005); backtest de política con LSTM (AUD-006, candidata natural).
+6. Diferidas a propósito: dominios/INAPI (retomar con tracción); postulación Grupo
+   Mariposa — la oferta de pulir el dashboard para el CV sigue abierta.
