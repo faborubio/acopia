@@ -61,16 +61,22 @@ debilidad de la cuantización del baseline, AUD-003). La Fase 5 (potencia de
 suficiencia, multi-planta, nube) es **"solo con tracción"** por regla del Método.
 Existe un **dashboard demo** en `GET /demo` (ADR-011) que comparte el día sembrado
 con la demo MCP. El proyecto entró en **exploración de salida real** (2026-07-14):
-publicar la demo, piloto hardware casero y prospección de cliente en el Maule
+la cara pública será el **Observatorio** (ADR-012) — sitio estático de datos del
+mercado en GitHub Pages que además publica el snapshot de la demo —, con piloto
+hardware casero y prospección de cliente en el Maule como frentes paralelos
 (detalle y evidencia en la bitácora de `MEMORY.md`).
 
 ## Próxima sesión
 
 Pendientes en orden de valor; ⏸ = espera una decisión del autor.
 
-1. ⏸ **Publicar la demo** — decidir la ruta: snapshot estático del dashboard en GitHub
-   Pages (recomendada: gratis, sin superficie de ataque, conserva la interactividad) vs
-   app viva en free tier (exige Dockerfile y proteger `POST /planes`). Al decidir: ADR.
+1. **Construir el Observatorio v1 (ADR-012)** — decisión tomada 2026-07-14: sitio
+   estático en GitHub Pages, dentro de acopia (`interfaces/observatorio/`), regenerado
+   por un GitHub Action mensual; **absorbe la publicación de la demo** (snapshot de
+   ADR-011 en el mismo sitio). Primera rebanada: parser del XLSX "Reducciones ERV"
+   (caso del formato en `docs/CASES.md` al implementarlo) → agregado por zona/mes →
+   página de vertimiento. Valorización = desplazamiento a la punta, nunca "a spot"
+   (nota de honestidad del ADR); barra representativa por zona (AUD-026).
 2. ⏸ **Prospección de cliente real (Maule, cerca de Curepto)** — candidatos mapeados
    (2026-07-14, bitácora): PMGD = calce directo del producto (Solek/Pencahue Este a
    ~40 km; oEnergy/El Tiuque, primer PMGD+BESS de Chile, en San Javier); viñas del

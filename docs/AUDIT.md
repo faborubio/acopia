@@ -40,6 +40,7 @@
 | AUD-023 | **El modo DRL no co-optimiza SSCC** (`politica.reserva` → error claro): el experimento de ADR-005 es arbitraje puro; añadir la banda al espacio de acción/recompensa es trabajo de fase 5 si el DRL lo justifica. | F4 | Aceptada — coherente con ADR-005 (experimento, no producto). |
 | AUD-024 | **Valorización duplicada entre LP y DRL**: `_ingreso_esperado` y el recurso de vertido viven en ambos optimizadores (~40 líneas paralelas); extraer un helper común en `infrastructure/optimizacion/`. | F4 | Pendiente — refactor menor; se aceptó para no tocar el LP probado en la misma rebanada. |
 | AUD-025 | **La observación del DRL no incluye el throughput restante** ni la banda SSCC; con garantía holgada es irrelevante, pero un agente cerca del límite de ciclado decidiría a ciegas. | F4 | Pendiente — añadir al vector de observación si el modo DRL pasa de experimento a opción real. |
+| AUD-026 | **Valorización del vertimiento sin mapeo central→barra** (ADR-012): la v1 del Observatorio valoriza el desplazamiento a la punta con el CMg de una **barra representativa por zona**, no el nodal de cada central; el mapeo fino central→barra es trabajo real (no hay tabla pública directa). | Observatorio | Aceptada para la v1 — la limitación se declara en el sitio; refinar si el Observatorio gana tracción o un prospecto pide su central exacta. |
 
 ### Deuda pagada
 
