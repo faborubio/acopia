@@ -6,7 +6,11 @@
 # públicos "Reducciones ERV" del Coordinador, que el Action de Pages no puede
 # descargar (Cloudflare bloquea IPs de datacenter; ver docs/TROUBLESHOOTING.md).
 # Refresco mensual local: ver el comentario de .github/workflows/observatorio.yml.
+# Ídem datos/cmg/ (ADR-012.2): caché del CMg de las barras representativas para
+# la duck curve — descarga manual por barra + rango de fechas, mismo ritual.
 *
 !.gitignore
 !erv/
 !erv/*.xlsx
+!cmg/
+!cmg/*.xlsx

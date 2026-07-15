@@ -14,6 +14,12 @@
 #     | while read -r url; do curl -sL -A "$UA" -o "datos/erv/$(basename "$url")" "$url"; done
 #   git add datos/erv && git commit -m "data(erv): mes nuevo" && git push
 #
+# CMg para la duck curve (ADR-012.2), mismo ritual: bajar del portal del Coordinador
+# el XLS de CMg real de cada barra representativa (S.GREGORIO + centro + sur; una
+# barra, rango de fechas) a datos/cmg/<barra>_<año>.xlsx, y pasar cada una al
+# comando de abajo con --cmg "Etiqueta=COLUMNA=datos/cmg/archivo.xlsx" (la primera
+# vez: agregar los flags aquí y en el paso "Generar el sitio").
+#
 # Requisito único de configuración: Settings → Pages → fuente "GitHub Actions".
 
 name: observatorio
@@ -23,6 +29,7 @@ on:
     branches: [main]
     paths:
       - "datos/erv/**"
+      - "datos/cmg/**"
       - "src/acopia/interfaces/observatorio/**"
       - "src/acopia/interfaces/rest/dashboard.py"
       - ".github/workflows/observatorio.yml"

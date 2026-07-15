@@ -17,9 +17,11 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from acopia.infrastructure.ingesta.reducciones_erv import ReduccionDiaria
 from acopia.interfaces.observatorio.agregados import (
+    duck_curve_usd_mwh,
     perfil_horario_mwh,
     top_centrales,
     total_mensual_gwh,
+    valor_desplazamiento_usd,
 )
 
 # Orden fijo de apilado (abajo → arriba) = orden de slots validado por el validador
@@ -38,18 +40,54 @@ _MESES_ES = (
 
 _ANCHO = 960
 
+# Slots 5-7 de la paleta de referencia (aqua/naranjo/violeta), distintos de los
+# 4 slots ya asignados a tecnologías: una barra nunca se disfraza de tecnología.
+# Validados con el script del método dataviz en ambos modos (PASS; el WARN de
+# contraste del aqua en claro se releva con etiquetas directas + tooltip).
+_MAX_BARRAS = 3
+
+# Serie de la ingesta: (timestamp ISO, mills/MWh entero) — ver `leer_serie`.
+SerieCmg = Sequence[tuple[str, int]]
+
+_NOTA_SIN_VALORIZACION = (
+    'Valorizar esta energía "a precio spot" sería engañoso — se vierte justo cuando el precio'
+    " colapsa a ~0 —; la valorización honesta (¿cuánto valdría desplazada a la punta?) es una"
+    " página futura de este observatorio."
+)
+_NOTA_CON_VALORIZACION = (
+    'Valorizar esta energía "a precio spot" sería engañoso — se vierte justo cuando el precio'
+    " colapsa a ~0 —; por eso la valorización usa el <em>diferencial contra la hora punta</em>:"
+    " Σ<sub>h</sub> E<sub>h</sub> · max(0, η·CMg<sub>punta</sub> − CMg<sub>h</sub>), con la"
+    " eficiencia de ida y vuelta declarada. El CMg es el promedio horario de barras"
+    " representativas (sin mapeo central→barra, limitación declarada) sobre el período de"
+    " referencia indicado en cada cifra — no el nodal de cada central ni el mismo año del"
+    " vertimiento cuando la fuente aún no publica los meses equivalentes."
+)
+
 
 def render_vertimiento(
-    registros: Iterable[ReduccionDiaria], generado_el: str, enlace_demo: bool = False
+    registros: Iterable[ReduccionDiaria],
+    generado_el: str,
+    enlace_demo: bool = False,
+    cmg_por_barra: Mapping[str, SerieCmg] | None = None,
+    eficiencia: float = 0.85,
 ) -> str:
     """Arma la página completa desde los registros de `leer_reducciones_erv`.
 
     ``enlace_demo`` agrega el enlace al snapshot del dashboard (`demo.html`) cuando
     el sitio se genera completo (ADR-012 absorbe la publicación de ADR-011).
+    ``cmg_por_barra`` (etiqueta visible → serie de la ingesta, máx. 3 barras
+    representativas) agrega la duck curve del CMg y la valorización del
+    desplazamiento a la punta con eficiencia de ida y vuelta ``eficiencia``
+    (enmienda ADR-012.2); sin él, la página queda como la v1.
     """
     registros = tuple(registros)
     if not registros:
         raise ValueError("Sin registros de vertimiento: no hay página que generar")
+    if cmg_por_barra and len(cmg_por_barra) > _MAX_BARRAS:
+        raise ValueError(
+            f"Máximo {_MAX_BARRAS} barras representativas (cap de series del método dataviz)"
+        )
 
     mensual = total_mensual_gwh(registros)
     meses = sorted({mes for mes, _ in mensual})
@@ -62,6 +100,9 @@ def render_vertimiento(
     hora_pico = horas_perfil.index(max(horas_perfil)) + 1
     n_centrales = len({r.central for r in registros})
 
+    seccion_cmg = (
+        _seccion_cmg(cmg_por_barra, horas_perfil, eficiencia) if cmg_por_barra else ""
+    )
     return (
         _PLANTILLA.replace("__PERIODO__", html.escape(_periodo(meses)))
         .replace("__GENERADO__", html.escape(generado_el))
@@ -72,8 +113,13 @@ def render_vertimiento(
         .replace("__LEYENDA__", _leyenda())
         .replace("__SVG_MENSUAL__", _svg_mensual(meses, mensual))
         .replace("__SVG_PERFIL__", _svg_perfil(perfil))
+        .replace("__SECCION_CMG__", seccion_cmg)
         .replace("__SVG_TOP__", _svg_top(top))
         .replace("__FILAS_TABLA__", _filas_tabla(meses, mensual))
+        .replace(
+            "__NOTA_VALORIZACION__",
+            _NOTA_CON_VALORIZACION if cmg_por_barra else _NOTA_SIN_VALORIZACION,
+        )
         .replace(
             "__ENLACE_DEMO__",
             ' · <a href="demo.html">ver la demo del motor</a>' if enlace_demo else "",
@@ -155,7 +201,8 @@ def _eje_y(techo: float, alto_plot: float, y0: float, unidad: str) -> str:
         clase = "baseline" if i == 0 else "grid"
         partes.append(f'<line class="{clase}" x1="46" y1="{y:.1f}" x2="{_ANCHO}" y2="{y:.1f}"/>')
         partes.append(f'<text class="tick" x="40" y="{y + 4:.1f}" text-anchor="end">{etiqueta}</text>')
-    partes.append(f'<text class="tick unidad" x="40" y="{y0 - 6:.1f}" text-anchor="end">{unidad}</text>')
+    # anclada al borde izquierdo: "USD/MWh" no cabe anclada a la derecha en x=40
+    partes.append(f'<text class="tick unidad" x="2" y="{y0 - 6:.1f}">{unidad}</text>')
     return "".join(partes)
 
 
@@ -230,6 +277,126 @@ def _svg_perfil(perfil: dict[str, tuple[float, ...]]) -> str:
     )
 
 
+def _anios(serie: SerieCmg) -> str:
+    """Años cubiertos por la serie: ``"2025"`` o ``"2025-2026"`` (con guión largo en la página)."""
+    anios = sorted({timestamp[:4] for timestamp, _ in serie})
+    return anios[0] if len(anios) == 1 else f"{anios[0]}–{anios[-1]}"
+
+
+def _leyenda_barras(etiquetas: Sequence[str]) -> str:
+    piezas = [
+        f'<span class="clave"><i class="sw b{i}"></i>{html.escape(etiqueta)}</span>'
+        for i, etiqueta in enumerate(etiquetas, start=1)
+    ]
+    return f'<div class="leyenda">{"".join(piezas)}</div>'
+
+
+def _svg_duck(curvas: Mapping[str, tuple[float, ...]], alto: int = 280) -> str:
+    """Duck curve del CMg: línea de 24 h por barra, server-side como el resto."""
+    y0, alto_plot, x0 = 18.0, alto - 18 - 26, 46.0
+    banda = (_ANCHO - x0) / 24
+    if min(min(curva) for curva in curvas.values()) < 0:
+        raise ValueError(
+            "CMg promedio horario negativo: la escala del gráfico asume piso 0; "
+            "extender el eje cuando aparezca el caso real (y documentarlo en CASES)"
+        )
+    techo = _tick_limpio(max(max(curva) for curva in curvas.values()))
+    xs = [x0 + banda * i + banda / 2 for i in range(24)]
+
+    def y_de(valor: float) -> float:
+        return y0 + alto_plot * (1 - valor / techo)
+
+    varias = len(curvas) >= 2
+    partes = [_eje_y(techo, alto_plot, y0, "USD/MWh")]
+    for i, (etiqueta, curva) in enumerate(curvas.items(), start=1):
+        puntos = " ".join(
+            f"{x:.1f},{y_de(v):.1f}" for x, v in zip(xs, curva, strict=True)
+        )
+        partes.append(f'<polyline class="linea b{i}" points="{puntos}"/>')
+        punta = curva.index(max(curva))
+        partes.append(
+            f'<circle class="punto b{i}" cx="{xs[punta]:.1f}" cy="{y_de(curva[punta]):.1f}" r="3.5"/>'
+        )
+        partes.append(
+            f'<text class="valor" x="{xs[punta]:.1f}" y="{y_de(curva[punta]) - 8:.1f}" '
+            f'text-anchor="middle">{_fmt(curva[punta])}</text>'
+        )
+        if varias:  # etiqueta directa escalonada (además de la leyenda), lejos de la punta
+            hora_nombre = 3 + 6 * (i - 1)
+            partes.append(
+                f'<text class="nombre" x="{xs[hora_nombre]:.1f}" '
+                f'y="{y_de(curva[hora_nombre]) - 9:.1f}" text-anchor="middle">'
+                f"{html.escape(etiqueta)}</text>"
+            )
+        else:  # con una sola barra también se anota el colapso de mediodía
+            fondo = curva.index(min(curva))
+            partes.append(
+                f'<text class="valor" x="{xs[fondo]:.1f}" y="{y_de(curva[fondo]) + 16:.1f}" '
+                f'text-anchor="middle">{_fmt(curva[fondo])}</text>'
+            )
+    for h in (1, 6, 12, 18, 24):
+        partes.append(
+            f'<text class="tick" x="{xs[h - 1]:.1f}" y="{alto - 8}" '
+            f'text-anchor="middle">{h}</text>'
+        )
+    for i in range(24):  # hit target: la banda completa de cada hora
+        valores_hora = [
+            {"tec": etiqueta, "clase": f"b{j}", "valor": f"{_fmt(curva[i])} USD/MWh"}
+            for j, (etiqueta, curva) in enumerate(curvas.items(), start=1)
+        ]
+        payload = html.escape(
+            json.dumps({"titulo": f"{i + 1}:00", "filas": valores_hora}, ensure_ascii=False)
+        )
+        partes.append(
+            f'<rect class="hit" tabindex="0" x="{x0 + banda * i:.1f}" y="{y0}" '
+            f'width="{banda:.1f}" height="{alto_plot}" data-tooltip="{payload}"/>'
+        )
+    return (
+        f'<svg viewBox="0 0 {_ANCHO} {alto}" role="img" '
+        f'preserveAspectRatio="xMidYMid meet">{"".join(partes)}</svg>'
+    )
+
+
+def _seccion_cmg(
+    cmg_por_barra: Mapping[str, SerieCmg],
+    horas_perfil: Sequence[float],
+    eficiencia: float,
+) -> str:
+    """Las dos secciones de la rebanada 3: duck curve + valorización a la punta."""
+    curvas = {
+        etiqueta: duck_curve_usd_mwh(serie) for etiqueta, serie in cmg_por_barra.items()
+    }
+    tarjetas = []
+    for etiqueta, curva in curvas.items():
+        valor = valor_desplazamiento_usd(horas_perfil, curva, eficiencia)
+        punta = curva.index(max(curva))
+        millones = valor / 1e6
+        cifra = f"US$ {millones:,.1f} M" if millones < 10 else f"US$ {millones:,.0f} M"
+        tarjetas.append(
+            f'<div class="kpi"><div class="etiqueta">{html.escape(etiqueta)}</div>'
+            f'<div class="cifra">{cifra}</div>'
+            f'<div class="nota">punta {punta + 1}:00 · η {eficiencia:.0%} · '
+            f"CMg {_anios(cmg_por_barra[etiqueta])} (referencia)</div></div>"
+        )
+    leyenda = _leyenda_barras(list(curvas)) if len(curvas) >= 2 else ""
+    return f"""<section>
+    <h2>La duck curve del costo marginal</h2>
+    <p class="sub">Promedio horario del CMg (USD/MWh) en {"barras representativas" if len(curvas) >= 2 else "una barra representativa"}
+    del sistema. A mediodía el precio colapsa — a veces a 0 — por la misma sobreoferta solar
+    que produce el vertimiento; al caer el sol, se dispara. Ese diferencial es el que captura
+    una batería.</p>
+    <div class="card">{leyenda} {_svg_duck(curvas)}</div>
+  </section>
+
+  <section>
+    <h2>Cuánto valdría esa energía desplazada a la punta</h2>
+    <p class="sub">Si la energía vertida del período se hubiera almacenado (eficiencia de ida
+    y vuelta η = {eficiencia:.0%}) y vendido en la hora punta, neto de lo poco que valía en su
+    hora — la tesis del motor Acopia, contada con datos públicos (método en la nota al pie).</p>
+    <div class="kpis">{"".join(tarjetas)}</div>
+  </section>"""
+
+
 def _svg_top(top: Sequence[tuple[str, str, float]]) -> str:
     alto_fila, alto = 30, 30 * len(top) + 8
     x0 = 236.0
@@ -296,6 +463,7 @@ _PLANTILLA = """<!DOCTYPE html>
     --text: #0b0b0b; --text-2: #52514e; --muted: #898781;
     --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
     --solar: #eda100; --eolica: #2a78d6; --hidro_pasada: #008300; --hidro_embalse: #e87ba4;
+    --b1: #1baf7a; --b2: #eb6834; --b3: #4a3aa7;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -303,6 +471,7 @@ _PLANTILLA = """<!DOCTYPE html>
       --text: #ffffff; --text-2: #c3c2b7; --muted: #898781;
       --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
       --solar: #c98500; --eolica: #3987e5; --hidro_pasada: #008300; --hidro_embalse: #d55181;
+      --b1: #199e70; --b2: #d95926; --b3: #9085e9;
     }
   }
   * { box-sizing: border-box; margin: 0; }
@@ -325,9 +494,14 @@ _PLANTILLA = """<!DOCTYPE html>
   .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
   .sw.solar { background: var(--solar); } .sw.eolica { background: var(--eolica); }
   .sw.hidro_pasada { background: var(--hidro_pasada); } .sw.hidro_embalse { background: var(--hidro_embalse); }
+  .sw.b1 { background: var(--b1); } .sw.b2 { background: var(--b2); } .sw.b3 { background: var(--b3); }
   svg { width: 100%; height: auto; display: block; }
   svg .serie.solar { fill: var(--solar); } svg .serie.eolica { fill: var(--eolica); }
   svg .serie.hidro_pasada { fill: var(--hidro_pasada); } svg .serie.hidro_embalse { fill: var(--hidro_embalse); }
+  svg .linea { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  svg .linea.b1 { stroke: var(--b1); } svg .linea.b2 { stroke: var(--b2); } svg .linea.b3 { stroke: var(--b3); }
+  svg .punto.b1 { fill: var(--b1); } svg .punto.b2 { fill: var(--b2); } svg .punto.b3 { fill: var(--b3); }
+  svg .nombre { fill: var(--text-2); font-size: 12px; }
   svg .grid { stroke: var(--grid); stroke-width: 1; } svg .baseline { stroke: var(--baseline); stroke-width: 1; }
   svg .tick { fill: var(--muted); font-size: 11.5px; } svg .tick.unidad { font-size: 10.5px; }
   svg .tick.central { font-size: 12px; fill: var(--text-2); }
@@ -345,6 +519,7 @@ _PLANTILLA = """<!DOCTYPE html>
   #tooltip .fila .stroke { width: 10px; height: 3px; border-radius: 2px; background: var(--baseline); }
   #tooltip .fila .stroke.solar { background: var(--solar); } #tooltip .fila .stroke.eolica { background: var(--eolica); }
   #tooltip .fila .stroke.hidro_pasada { background: var(--hidro_pasada); } #tooltip .fila .stroke.hidro_embalse { background: var(--hidro_embalse); }
+  #tooltip .fila .stroke.b1 { background: var(--b1); } #tooltip .fila .stroke.b2 { background: var(--b2); } #tooltip .fila .stroke.b3 { background: var(--b3); }
   #tooltip .fila .v { font-weight: 650; margin-left: auto; font-variant-numeric: tabular-nums; }
   #tooltip .fila .n { color: var(--text-2); }
   footer { margin-top: 34px; color: var(--muted); font-size: 12.5px; max-width: 82ch; }
@@ -383,6 +558,8 @@ _PLANTILLA = """<!DOCTYPE html>
     <div class="card">__LEYENDA__ __SVG_PERFIL__</div>
   </section>
 
+  __SECCION_CMG__
+
   <section>
     <h2>Las 10 centrales que más vierten</h2>
     <p class="sub">MWh reducidos en el período, por central (nombre según el Coordinador).</p>
@@ -402,9 +579,7 @@ _PLANTILLA = """<!DOCTYPE html>
     <p><strong>Nota metodológica.</strong> Fuente: XLSX mensual "Reducciones de Generación Renovable"
     (Coordinador Eléctrico Nacional), detalle por central × hora; los totales se recalculan desde ese
     detalle, no se copian del resumen del archivo. La fuente se publica con ~2 meses de rezago.
-    Valorizar esta energía "a precio spot" sería engañoso — se vierte justo cuando el precio colapsa
-    a ~0 —; la valorización honesta (¿cuánto valdría desplazada a la punta?) es una página futura de
-    este observatorio.</p>
+    __NOTA_VALORIZACION__</p>
   </footer>
 </div>
 <div id="tooltip" role="status"></div>

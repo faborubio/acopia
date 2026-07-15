@@ -6,9 +6,11 @@ import pytest
 
 from acopia.infrastructure.ingesta.reducciones_erv import ReduccionDiaria
 from acopia.interfaces.observatorio.agregados import (
+    duck_curve_usd_mwh,
     perfil_horario_mwh,
     top_centrales,
     total_mensual_gwh,
+    valor_desplazamiento_usd,
 )
 
 
@@ -43,6 +45,44 @@ def test_perfil_horario_suma_cada_hora_por_tecnologia() -> None:
     assert perfiles["solar"][12] == pytest.approx(200.0)
     assert sum(perfiles["solar"]) == pytest.approx(200.0)  # el resto del día en cero
     assert perfiles["eolica"] == (1.0,) * 24
+
+
+def _dia_cmg(fecha: str, mills_por_hora: list[int]) -> list[tuple[str, int]]:
+    return [(f"{fecha}T{h:02d}:00", mills_por_hora[h]) for h in range(24)]
+
+
+def test_duck_curve_promedia_por_hora_en_usd() -> None:
+    dia_barato = _dia_cmg("2025-01-01", [10_000] * 24)
+    dia_caro = _dia_cmg("2025-01-02", [30_000] * 24)
+    curva = duck_curve_usd_mwh(dia_barato + dia_caro)
+    assert curva == (20.0,) * 24  # (10k + 30k) / 2 mills = 20 USD/MWh
+
+
+def test_duck_curve_exige_cobertura_de_24_horas() -> None:
+    with pytest.raises(ValueError, match="no cubre"):
+        duck_curve_usd_mwh([("2025-01-01T05:00", 1_000)])
+
+
+def test_valor_desplazamiento_es_el_diferencial_contra_la_punta() -> None:
+    # CMg 0 a mediodía y punta de 100 USD/MWh; 10 MWh vertidos a mediodía.
+    cmg = [50.0] * 24
+    cmg[12], cmg[20] = 0.0, 100.0
+    vertido = [0.0] * 24
+    vertido[12] = 10.0
+    # 10 MWh * (0.85 * 100 - 0) = 850 USD
+    assert valor_desplazamiento_usd(vertido, cmg, eficiencia=0.85) == pytest.approx(850.0)
+
+
+def test_valor_desplazamiento_no_premia_vertido_en_horas_caras() -> None:
+    # Con CMg plano, desplazar pierde la eficiencia: max(0, eta*p - p) = 0.
+    assert valor_desplazamiento_usd([1.0] * 24, [100.0] * 24) == 0.0
+
+
+def test_valor_desplazamiento_valida_la_eficiencia() -> None:
+    with pytest.raises(ValueError, match="Eficiencia"):
+        valor_desplazamiento_usd([0.0] * 24, [1.0] * 24, eficiencia=0.0)
+    with pytest.raises(ValueError, match="Eficiencia"):
+        valor_desplazamiento_usd([0.0] * 24, [1.0] * 24, eficiencia=1.2)
 
 
 def test_top_centrales_ordena_desc_y_corta_en_n() -> None:

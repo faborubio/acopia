@@ -230,6 +230,18 @@ def _construir_parser() -> argparse.ArgumentParser:
     observatorio.add_argument(
         "--fecha", default=None, help="Fecha 'generado el' (YYYY-MM-DD; default: hoy)",
     )
+    observatorio.add_argument(
+        "--cmg", action="append", default=None, metavar="ETIQUETA=COLUMNA=RUTA",
+        help="Serie de CMg para la duck curve (ADR-012.2; repetible, máx. 3 barras): "
+             "etiqueta visible, columna de la barra (matching tolerante) y XLSX del "
+             "Coordinador en formato ancho Fecha/Hora (USD/MWh). Misma etiqueta en "
+             "varios --cmg concatena archivos. Ej: "
+             '"Norte - S. Gregorio=S.GREGORIO=datos/cmg/sgregorio_2025.xlsx"',
+    )
+    observatorio.add_argument(
+        "--eficiencia", type=float, default=0.85,
+        help="Eficiencia de ida y vuelta para la valorización a la punta (default 0.85)",
+    )
     return parser
 
 
@@ -306,9 +318,31 @@ def _ejecutar_observatorio(args: argparse.Namespace) -> None:
         registros.extend(leer_reducciones_erv(ruta))
     generado_el = args.fecha or date.today().isoformat()
 
+    # Duck curve (ADR-012.2): convenciones fijas del XLSX de CMg del Coordinador
+    # (Fecha combinada + Hora 0..23, USD/MWh -> mills con escala 1000).
+    cmg_por_barra: dict[str, list[tuple[str, int]]] | None = None
+    if args.cmg:
+        cmg_por_barra = {}
+        for spec in args.cmg:
+            try:
+                etiqueta, columna, ruta_cmg = spec.split("=", 2)
+            except ValueError:
+                raise SystemExit(
+                    f"--cmg espera ETIQUETA=COLUMNA=RUTA, no {spec!r}"
+                ) from None
+            serie = leer_serie(
+                ruta_cmg, "Fecha", columna, escala=1000.0, columna_hora="Hora"
+            )
+            cmg_por_barra.setdefault(etiqueta, []).extend(serie)
+        for serie in cmg_por_barra.values():
+            serie.sort(key=lambda par: par[0])  # cronológico por timestamp ISO
+
     salida = Path(args.salida)
     salida.mkdir(parents=True, exist_ok=True)
-    pagina = render_vertimiento(tuple(registros), generado_el, enlace_demo=not args.sin_demo)
+    pagina = render_vertimiento(
+        tuple(registros), generado_el, enlace_demo=not args.sin_demo,
+        cmg_por_barra=cmg_por_barra, eficiencia=args.eficiencia,
+    )
     (salida / "index.html").write_text(pagina, encoding="utf-8")
     print(f"Observatorio: index.html ({len(registros)} registros) en {salida}")
 
