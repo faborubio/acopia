@@ -15,10 +15,11 @@
 #   git add datos/erv && git commit -m "data(erv): mes nuevo" && git push
 #
 # CMg para la duck curve (ADR-012.2), mismo ritual: bajar del portal del Coordinador
-# el XLS de CMg real de cada barra representativa (S.GREGORIO + centro + sur; una
-# barra, rango de fechas) a datos/cmg/<barra>_<año>.xlsx, y pasar cada una al
-# comando de abajo con --cmg "Etiqueta=COLUMNA=datos/cmg/archivo.xlsx" (la primera
-# vez: agregar los flags aquí y en el paso "Generar el sitio").
+# el XLS de CMg real de cada barra representativa (una barra, rango de fechas) a
+# datos/cmg/<barra>_<año>.xlsx y pasarla al paso "Generar el sitio" con
+# --cmg "Etiqueta=COLUMNA=datos/cmg/archivo.xlsx". Hoy publica S.GREGORIO 2025
+# (referencia declarada en la página); en el refresco quedan pendientes los XLS
+# 2026 de las 3 barras (S.GREGORIO + centro tipo Alto Jahuel + sur tipo Charrúa).
 #
 # Requisito único de configuración: Settings → Pages → fuente "GitHub Actions".
 
@@ -61,8 +62,11 @@ jobs:
 
       - name: Generar el sitio desde el caché
         run: |
-          ls -la datos/erv/
-          acopia-datos observatorio --reducciones datos/erv/*.xlsx --salida _sitio
+          ls -la datos/erv/ datos/cmg/
+          acopia-datos observatorio --reducciones datos/erv/*.xlsx --salida _sitio \
+            --cmg "Norte - S. Gregorio=S.GREGORIO=datos/cmg/sgregorio_2025_ene.xlsx" \
+            --cmg "Norte - S. Gregorio=S.GREGORIO=datos/cmg/sgregorio_2025_feb.xlsx" \
+            --cmg "Norte - S. Gregorio=S.GREGORIO=datos/cmg/sgregorio_2025_mar-dic.xlsx"
 
       - uses: actions/upload-pages-artifact@v3
         with:
