@@ -125,6 +125,12 @@
 - **Comportamiento esperado:** recortar la acción al máximo factible (SoC, potencia, throughput, nodo), no anularla. El repair antiguo (RETENER) perdía el intervalo completo: ~15% del ingreso en días reales de enero. Descubierto porque el **experimento DRL de ADR-005 "superaba" al LP** — le ganaba al repair, no al óptimo.
 - **Cubierto por:** ✅ `test_la_deriva_de_floors_recorta_la_descarga_en_vez_de_anularla` (`tests/infrastructure/test_cuantizacion_lp.py`) + `OptimizadorLP._accion_recortada` (paga AUD-003).
 
+### El XLSX "Reducciones ERV" del Coordinador (bloques por día + typos oficiales)
+- **Escenario (Observatorio, ADR-012):** una hoja `Resumen-DiarioHorario-<Tecnología>` por tecnología; cada día es un **bloque** — fila con la fecha (fórmula hacia `Resumen-Mensual`, se lee el valor cacheado con `data_only`), header `Central/Hora` con las horas 1..24, una fila por central en **MWh** y una fila `Total` que cierra. El archivo real de mayo 2026 trajo además: **`"-"` (guión contable)** por "sin reducción" en la hoja eólica, y un **typo en el header** (un `|` donde iba el `2`, hoja solar, día 10).
+- **Comportamiento esperado:** `leer_reducciones_erv` aplana a registros `(tecnologia, central, fecha, 24 MWh)`; celdas vacías y guiones cuentan como 0.0; filas `Total` se omiten (los totales se recalculan, nunca se confía en fórmulas del libro); el typo del header se **repara por posición** solo si las horas encontradas son ≥20 y contiguas (menos que eso = header trunco → error, no desfase silencioso); vertimiento negativo = error con hoja/fila/hora.
+- **Validación real:** el archivo de mayo 2026 completo (31 días, 9238 registros) cuadra **exacto** con su propio `Resumen-Mensual`: solar 137.548 · eólica 57.830 · hidro pasada 1.708 · embalse 0 GWh.
+- **Cubierto por:** ✅ `tests/infrastructure/test_reducciones_erv.py` (8 tests: aplanado, 4 tecnologías, celda vacía, guión, typo del header, header trunco, negativo, archivo ajeno).
+
 ### SSCC emergente: sin retiro de red, absorber exige estar inyectando
 - **Escenario:** planta con `retiro_max = 0`: para absorber la activación a bajar (cargar +R) sin retirar de la red, el punto de conexión exige **estar inyectando ≥ R**.
 - **Comportamiento esperado:** el LP reparte óptimamente entre vender e inyectar de respaldo (en el test, d = R = 5 kW). Moraleja de testing: fijar invariantes físicos, no expectativas ingenuas — el LP ganó dos veces.
