@@ -4,6 +4,8 @@
 
 > **El problema que ataca:** Chile vertió **6.084 GWh** de energía renovable en 2025 (+7,8% vs 2024); entre 2022 y mediados de 2025 el vertimiento acumulado ronda los **11.900 GWh ≈ US$562M** perdidos, con el CMg colapsando a 0 a mediodía por sobreoferta solar y disparándose en la punta vespertina. Ese diferencial es exactamente lo que una batería bien despachada captura.
 
+🔭 **[Observatorio en vivo](https://faborubio.github.io/acopia/)** — la cara pública de Acopia: vertimiento renovable de Chile con datos oficiales del Coordinador (ene–may 2026: **2.463 GWh** vertidos), regenerado mensualmente, con el [snapshot del dashboard demo](https://faborubio.github.io/acopia/demo.html) incluido.
+
 Arquitectura completa y decisiones (ADRs) en [`SAD_Acopia_energia.md`](./SAD_Acopia_energia.md) · Contexto de trabajo en [`CLAUDE.md`](./CLAUDE.md).
 
 ## Resultados medidos
@@ -34,6 +36,8 @@ El dominio es **puro y stdlib-only** (Clean Architecture con frontera verificada
 uv run uvicorn acopia.interfaces.rest.app:app   # → http://127.0.0.1:8000/demo
 python -m acopia.interfaces.mcp.servidor        # servidor MCP (stdio) con el mismo día sembrado
 ```
+
+¿Sin Python a mano? El mismo dashboard vive como [snapshot estático en el Observatorio](https://faborubio.github.io/acopia/demo.html).
 
 **`GET /demo`** sirve el dashboard del día típico chileno (ADR-011): el plan de despacho sobre la duck curve — CMg con anotaciones, PV y acciones de la batería, SoC — con el **motivo de cada decisión** en el tooltip, y el pipeline de datos que alimenta al motor. HTML autocontenido: sin CDN, sin framework de frontend, legible sin JavaScript, modo claro/oscuro. Es el mismo día que interroga la demo MCP.
 

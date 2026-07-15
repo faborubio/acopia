@@ -60,34 +60,40 @@ capa MCP y modo DRL medido (captura 96% del LP; el experimento destapó y pagó 
 debilidad de la cuantización del baseline, AUD-003). La Fase 5 (potencia de
 suficiencia, multi-planta, nube) es **"solo con tracción"** por regla del Método.
 Existe un **dashboard demo** en `GET /demo` (ADR-011) que comparte el día sembrado
-con la demo MCP. El proyecto entró en **exploración de salida real** (2026-07-14):
-la cara pública será el **Observatorio** (ADR-012) — sitio estático de datos del
-mercado en GitHub Pages que además publica el snapshot de la demo —, con piloto
-hardware casero y prospección de cliente en el Maule como frentes paralelos
-(detalle y evidencia en la bitácora de `MEMORY.md`).
+con la demo MCP. El proyecto entró en **exploración de salida real** (2026-07-14) y
+su cara pública, el **Observatorio** (ADR-012), está **construida y desplegada**
+(2026-07-15): https://faborubio.github.io/acopia/ — página de vertimiento con datos
+oficiales ene–may 2026 (2.463 GWh) + snapshot de la demo en `demo.html`. El sitio se
+construye desde el caché versionado `datos/erv/` (enmienda ADR-012.1: Cloudflare
+bloquea descargas desde CI; refresco mensual local, snippet en el workflow). Frentes
+paralelos: piloto hardware casero y prospección de cliente en el Maule (detalle y
+evidencia en la bitácora de `MEMORY.md`).
 
 ## Próxima sesión
 
 Pendientes en orden de valor; ⏸ = espera una decisión del autor.
 
-1. **Difundir el Observatorio v1** — construido y desplegado el 2026-07-15
-   (https://faborubio.github.io/acopia/): enlazarlo en el README de acopia y el perfil
-   de GitHub; primer contenido de LinkedIn con la página de vertimiento (la cuña de
-   posicionamiento del ADR-012).
-2. **Observatorio rebanada 3**: duck curve del CMg + valorización del desplazamiento
+1. ⏸ **Difundir el Observatorio v1** (desplegado 2026-07-15, enlazado ya en el README):
+   queda enlazarlo en el **perfil de GitHub** y el primer **post de LinkedIn** con la
+   página de vertimiento — la cuña de posicionamiento del ADR-012 la ejecuta el autor.
+2. **Refresco mensual del caché ERV** (~día 5, cuando el Coordinador publique junio):
+   el snippet local está en el encabezado de `.github/workflows/observatorio.yml`;
+   el push del caché redespliega solo. Primer refresco: **datos de junio, en agosto**.
+3. **Observatorio rebanada 3**: duck curve del CMg + valorización del desplazamiento
    a la punta. Bloqueo real: falta fuente de CMg automatizable para el Action (la
    descarga manual del XLS no sirve); evaluar la API v4 online por tramos chicos, y el
    mapeo central→zona vía info de instalaciones del Coordinador (AUD-026).
-2. ⏸ **Prospección de cliente real (Maule, cerca de Curepto)** — candidatos mapeados
+4. ⏸ **Prospección de cliente real (Maule, cerca de Curepto)** — candidatos mapeados
    (2026-07-14, bitácora): PMGD = calce directo del producto (Solek/Pencahue Este a
    ~40 km; oEnergy/El Tiuque, primer PMGD+BESS de Chile, en San Javier); viñas del
-   Mataquito (Viñedos Puertas) = piloto behind-the-meter que exige adaptación.
-3. **Especificar la adaptación behind-the-meter** si se persigue la viña: señal =
+   Mataquito (Viñedos Puertas) = piloto behind-the-meter que exige adaptación. El
+   Observatorio es ahora el artefacto de venta ("este es SU vertimiento").
+5. **Especificar la adaptación behind-the-meter** si se persigue la viña: señal =
    tarifa horaria en vez de CMg + término de cargo por potencia (máximo leído, no
    energía) en el LP. Parte con su caso en `docs/CASES.md` y su ADR.
-4. ⏸ **Piloto hardware paso 0** (costo ~USD 0): adaptador de ejecución/telemetría
+6. ⏸ **Piloto hardware paso 0** (costo ~USD 0): adaptador de ejecución/telemetría
    Modbus contra Venus OS (Victron) en modo demo, antes de comprar batería. Abre con ADR.
-5. **Deuda viva del registro `AUD-NNN`**: hiperparámetros/regla por régimen (resto de
+7. **Deuda viva del registro `AUD-NNN`**: hiperparámetros/regla por régimen (resto de
    AUD-005); backtest de política con LSTM (AUD-006, candidata natural).
-6. Diferidas a propósito: dominios/INAPI (retomar con tracción); postulación Grupo
+8. Diferidas a propósito: dominios/INAPI (retomar con tracción); postulación Grupo
    Mariposa — la oferta de pulir el dashboard para el CV sigue abierta.
