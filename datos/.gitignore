@@ -1,5 +1,12 @@
 # Datasets reales (CMg del Coordinador, generación del Explorador Solar) y sus
 # derivados: no se versionan (pueden ser grandes / con condiciones de uso).
 # Esta carpeta se mantiene en el repo solo por este .gitignore.
+#
+# Excepción: datos/erv/ SÍ se versiona (ADR-012.1) — es el caché de los XLSX
+# públicos "Reducciones ERV" del Coordinador, que el Action de Pages no puede
+# descargar (Cloudflare bloquea IPs de datacenter; ver docs/TROUBLESHOOTING.md).
+# Refresco mensual local: ver el comentario de .github/workflows/observatorio.yml.
 *
 !.gitignore
+!erv/
+!erv/*.xlsx

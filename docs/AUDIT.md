@@ -41,6 +41,7 @@
 | AUD-024 | **Valorización duplicada entre LP y DRL**: `_ingreso_esperado` y el recurso de vertido viven en ambos optimizadores (~40 líneas paralelas); extraer un helper común en `infrastructure/optimizacion/`. | F4 | Pendiente — refactor menor; se aceptó para no tocar el LP probado en la misma rebanada. |
 | AUD-025 | **La observación del DRL no incluye el throughput restante** ni la banda SSCC; con garantía holgada es irrelevante, pero un agente cerca del límite de ciclado decidiría a ciegas. | F4 | Pendiente — añadir al vector de observación si el modo DRL pasa de experimento a opción real. |
 | AUD-026 | **Valorización del vertimiento sin mapeo central→barra** (ADR-012): la v1 del Observatorio valoriza el desplazamiento a la punta con el CMg de una **barra representativa por zona**, no el nodal de cada central; el mapeo fino central→barra es trabajo real (no hay tabla pública directa). | Observatorio | Aceptada para la v1 — la limitación se declara en el sitio; refinar si el Observatorio gana tracción o un prospecto pide su central exacta. |
+| AUD-027 | **El caché `datos/erv/` versiona los XLSX crudos** (~1.8 MB/mes, enmienda ADR-012.1): el repo engorda con cada mes; un formato compacto parseado (CSV.gz por mes) reduciría ~10×, a costa de código de serialización propio. | Observatorio | Aceptada — proporcionalidad: cero código extra hoy; convertir si el peso del repo empieza a molestar (~1 año de datos). |
 
 ### Deuda pagada
 

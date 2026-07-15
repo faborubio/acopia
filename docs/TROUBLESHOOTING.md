@@ -40,3 +40,10 @@
 - **Causa:** el costo del fit de SARIMAX crece con el largo de la historia; la ventana expansiva re-ajusta con TODO el histórico en cada fold.
 - **Resolución:** `--ventana-entrenamiento N` (p. ej. 720 = 30 días): entrena régimen-local con las últimas N observaciones. SARIMAX anual pasó de impráctico a segundos — y de paso el LSTM recuperó su ventaja en CMg (ver `docs/CASES.md`, régimen-dependencia).
 - **Fecha:** 2026-07-02 (Fase 3).
+
+### El GitHub Action no puede descargar los XLSX del Coordinador (Cloudflare 403)
+
+- **Síntoma:** el workflow `observatorio.yml` fallaba en el paso de descarga con "No se encontraron XLSX"; el diagnóstico mostró **HTTP 403** y una página "Just a moment..." en vez del índice de Reducciones ERV.
+- **Causa:** coordinador.cl está tras **Cloudflare**, que desafía con JavaScript a las IPs de datacenter (los runners de GitHub). El User-Agent de navegador — que sí basta desde una IP residencial — no pasa el challenge desde CI, y burlarlo no es una opción honesta.
+- **Resolución:** **caché versionado** `datos/erv/*.xlsx` (enmienda ADR-012.1): el Action construye el sitio desde el repo; el refresco mensual corre **local** (una IP residencial no recibe challenge) con el snippet documentado en el encabezado del workflow, y el push del caché redespliega solo (trigger por `paths`).
+- **Fecha:** 2026-07-15 (Observatorio).

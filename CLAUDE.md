@@ -70,13 +70,14 @@ hardware casero y prospección de cliente en el Maule como frentes paralelos
 
 Pendientes en orden de valor; ⏸ = espera una decisión del autor.
 
-1. **Construir el Observatorio v1 (ADR-012)** — decisión tomada 2026-07-14: sitio
-   estático en GitHub Pages, dentro de acopia (`interfaces/observatorio/`), regenerado
-   por un GitHub Action mensual; **absorbe la publicación de la demo** (snapshot de
-   ADR-011 en el mismo sitio). Primera rebanada: parser del XLSX "Reducciones ERV"
-   (caso del formato en `docs/CASES.md` al implementarlo) → agregado por zona/mes →
-   página de vertimiento. Valorización = desplazamiento a la punta, nunca "a spot"
-   (nota de honestidad del ADR); barra representativa por zona (AUD-026).
+1. **Difundir el Observatorio v1** — construido y desplegado el 2026-07-15
+   (https://faborubio.github.io/acopia/): enlazarlo en el README de acopia y el perfil
+   de GitHub; primer contenido de LinkedIn con la página de vertimiento (la cuña de
+   posicionamiento del ADR-012).
+2. **Observatorio rebanada 3**: duck curve del CMg + valorización del desplazamiento
+   a la punta. Bloqueo real: falta fuente de CMg automatizable para el Action (la
+   descarga manual del XLS no sirve); evaluar la API v4 online por tramos chicos, y el
+   mapeo central→zona vía info de instalaciones del Coordinador (AUD-026).
 2. ⏸ **Prospección de cliente real (Maule, cerca de Curepto)** — candidatos mapeados
    (2026-07-14, bitácora): PMGD = calce directo del producto (Solek/Pencahue Este a
    ~40 km; oEnergy/El Tiuque, primer PMGD+BESS de Chile, en San Javier); viñas del
