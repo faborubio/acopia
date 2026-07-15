@@ -44,11 +44,14 @@ jobs:
           BASE="https://www.coordinador.cl/operacion/documentos/reducciones-de-generacion-renovable"
           mkdir -p _erv
           anio=$(date -u +%Y)
+          : > _erv/urls.txt
           for a in "$anio" "$((anio - 1))"; do
-            curl -sL -A "$UA" "$BASE/reducciones-erv-$a/" \
-              | grep -oE 'https://[^"]*Reducciones-de-Energia[^"]*\.xlsx' | sort -u \
-              || true
-          done > _erv/urls.txt
+            codigo=$(curl -sL -A "$UA" -o "_erv/indice-$a.html" -w "%{http_code}" "$BASE/reducciones-erv-$a/") || codigo=curl_fail
+            echo "indice $a: HTTP $codigo, $(wc -c < "_erv/indice-$a.html" 2>/dev/null || echo 0) bytes"
+            head -c 300 "_erv/indice-$a.html" 2>/dev/null || true
+            echo
+            grep -oE 'https://[^"]*Reducciones-de-Energia[^"]*\.xlsx' "_erv/indice-$a.html" >> _erv/urls.txt || true
+          done
           sort -u _erv/urls.txt -o _erv/urls.txt
           [ -s _erv/urls.txt ] || { echo "::error::No se encontraron XLSX de Reducciones ERV"; exit 1; }
           n=0
