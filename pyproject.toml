@@ -62,6 +62,7 @@ ignore = ["N818"]
 # El dashboard embebe un template HTML/CSS/JS: líneas largas y el menos tipográfico (−)
 # de la UI son intencionales. Solo aplica al template, no al resto del código Python.
 "src/acopia/interfaces/rest/dashboard.py" = ["E501", "RUF001"]
+"src/acopia/interfaces/observatorio/sitio.py" = ["E501", "RUF001"]
 
 [tool.mypy]
 python_version = "3.12"

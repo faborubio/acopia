@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from acopia.application.backtest import backtest_rodante
@@ -209,6 +210,26 @@ def _construir_parser() -> argparse.ArgumentParser:
     comparar.add_argument("--potencia-w", type=int, default=500, help="Carga/descarga (W)")
     comparar.add_argument("--iny-w", type=int, default=1_000_000, help="Techo de inyección (W)")
     comparar.add_argument("--retiro-w", type=int, default=0, help="Retiro máx. de red (W)")
+
+    observatorio = sub.add_parser(
+        "observatorio",
+        help="Genera el sitio estático del Observatorio (ADR-012): vertimiento + demo",
+    )
+    observatorio.add_argument(
+        "--reducciones", required=True, nargs="+",
+        help="Uno o más XLSX 'Reducciones ERV' del Coordinador (un mes cada uno)",
+    )
+    observatorio.add_argument(
+        "--salida", required=True,
+        help="Directorio del sitio: escribe index.html (y demo.html salvo --sin-demo)",
+    )
+    observatorio.add_argument(
+        "--sin-demo", action="store_true",
+        help="No incluir el snapshot del dashboard demo (ADR-011)",
+    )
+    observatorio.add_argument(
+        "--fecha", default=None, help="Fecha 'generado el' (YYYY-MM-DD; default: hoy)",
+    )
     return parser
 
 
@@ -266,7 +287,36 @@ def main(argv: list[str] | None = None) -> int:
         _ejecutar_backtest_politica(args)
     elif args.comando == "comparar-modos":
         _ejecutar_comparar_modos(args)
+    elif args.comando == "observatorio":
+        _ejecutar_observatorio(args)
     return 0
+
+
+def _ejecutar_observatorio(args: argparse.Namespace) -> None:
+    from datetime import date
+
+    from acopia.infrastructure.ingesta.reducciones_erv import (
+        ReduccionDiaria,
+        leer_reducciones_erv,
+    )
+    from acopia.interfaces.observatorio.sitio import render_vertimiento
+
+    registros: list[ReduccionDiaria] = []
+    for ruta in args.reducciones:
+        registros.extend(leer_reducciones_erv(ruta))
+    generado_el = args.fecha or date.today().isoformat()
+
+    salida = Path(args.salida)
+    salida.mkdir(parents=True, exist_ok=True)
+    pagina = render_vertimiento(tuple(registros), generado_el, enlace_demo=not args.sin_demo)
+    (salida / "index.html").write_text(pagina, encoding="utf-8")
+    print(f"Observatorio: index.html ({len(registros)} registros) en {salida}")
+
+    if not args.sin_demo:
+        from acopia.interfaces.rest.dashboard import render_dashboard
+
+        (salida / "demo.html").write_text(render_dashboard(), encoding="utf-8")
+        print(f"Observatorio: demo.html (snapshot ADR-011) en {salida}")
 
 
 def _ejecutar_backtest_politica(args: argparse.Namespace) -> None:

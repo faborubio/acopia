@@ -1,0 +1,77 @@
+# Observatorio (ADR-012): regenera el sitio estático y lo publica en GitHub Pages.
+#
+# Corre el día 5 de cada mes (el Coordinador publica "Reducciones ERV" con ~2 meses
+# de rezago; el día exacto no importa) y a demanda (workflow_dispatch). Descarga los
+# XLSX del año en curso y el anterior — la página del año nuevo tarda en poblarse —,
+# genera el sitio con `acopia-datos observatorio` y lo despliega.
+#
+# Requisito único de configuración: en Settings → Pages, elegir "GitHub Actions"
+# como fuente.
+
+name: observatorio
+
+on:
+  schedule:
+    - cron: "0 12 5 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar acopia (core + ingesta)
+        run: pip install -e ".[ingesta]"
+
+      - name: Descargar Reducciones ERV del Coordinador
+        # El sitio devuelve 403 sin User-Agent de navegador (docs/CASES.md).
+        run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+          BASE="https://www.coordinador.cl/operacion/documentos/reducciones-de-generacion-renovable"
+          mkdir -p _erv
+          anio=$(date -u +%Y)
+          for a in "$anio" "$((anio - 1))"; do
+            curl -sL -A "$UA" "$BASE/reducciones-erv-$a/" \
+              | grep -oE 'https://[^"]*Reducciones-de-Energia[^"]*\.xlsx' | sort -u \
+              || true
+          done > _erv/urls.txt
+          sort -u _erv/urls.txt -o _erv/urls.txt
+          [ -s _erv/urls.txt ] || { echo "::error::No se encontraron XLSX de Reducciones ERV"; exit 1; }
+          n=0
+          while read -r url; do
+            n=$((n + 1))
+            curl -sL -A "$UA" -o "_erv/$(basename "$url")" "$url"
+          done < _erv/urls.txt
+          echo "Descargados $n archivos"
+          ls -la _erv/
+
+      - name: Generar el sitio
+        run: acopia-datos observatorio --reducciones _erv/*.xlsx --salida _sitio
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _sitio
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
