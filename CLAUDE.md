@@ -67,8 +67,8 @@ oficiales ene–may 2026 (2.463 GWh) + snapshot de la demo en `demo.html`. El si
 construye desde el caché versionado `datos/erv/` (enmienda ADR-012.1: Cloudflare
 bloquea descargas desde CI; refresco mensual local, snippet en el workflow). La
 **rebanada 3** (duck curve del CMg + valorización a la punta, enmienda ADR-012.2)
-está **construida y verificada con datos reales** (US$ 137 M, S.GREGORIO 2025 como
-referencia); se publica cuando se pueble el caché `datos/cmg/`. Frentes
+está **publicada en vivo** (2026-07-15): US$ 137 M para el vertimiento ene–may 2026,
+con S.GREGORIO 2025 como referencia declarada desde el caché `datos/cmg/`. Frentes
 paralelos: piloto hardware casero y prospección de cliente en el Maule (detalle y
 evidencia en la bitácora de `MEMORY.md`).
 
@@ -79,17 +79,16 @@ Pendientes en orden de valor; ⏸ = espera una decisión del autor.
 1. ⏸ **Difundir el Observatorio v1** (desplegado 2026-07-15, enlazado ya en el README):
    queda enlazarlo en el **perfil de GitHub** y el primer **post de LinkedIn** con la
    página de vertimiento — la cuña de posicionamiento del ADR-012 la ejecuta el autor.
-2. **Refresco mensual del caché ERV** (~día 5, cuando el Coordinador publique junio):
-   el snippet local está en el encabezado de `.github/workflows/observatorio.yml`;
-   el push del caché redespliega solo. Primer refresco: **datos de junio, en agosto**,
-   e incluye el **primer caché CMg** del pendiente 3.
-3. **Observatorio rebanada 3 — publicarla** (código listo 2026-07-15, enmienda
-   ADR-012.2; verificado con S.GREGORIO 2025: US$ 137 M). ⏸ Decisión del autor:
-   publicar ya con la referencia 2025 (una barra) o esperar el XLS de CMg 2026
-   (ene–jun) de las 3 barras representativas (S.GREGORIO + centro tipo Alto Jahuel
-   + sur tipo Charrúa) en el refresco de agosto. En ambos casos: poblar
-   `datos/cmg/` y agregar los `--cmg` al paso de build del workflow (ritual en su
-   encabezado). Diferidos: mapeo central→zona (AUD-026), calce mensual (AUD-028).
+2. **Refresco mensual del caché** (~día 5, cuando el Coordinador publique junio):
+   ERV de junio (snippet en el encabezado de `.github/workflows/observatorio.yml`)
+   **+ XLS de CMg 2026** (ene–jun) de las 3 barras representativas (S.GREGORIO +
+   centro tipo Alto Jahuel + sur tipo Charrúa) a `datos/cmg/`, actualizando los
+   `--cmg` del workflow (hoy publica la referencia S.GREGORIO 2025). El push del
+   caché redespliega solo. Primer refresco: **en agosto**.
+3. ~~Observatorio rebanada 3~~ **PUBLICADA EN VIVO (2026-07-15)**: duck curve +
+   valorización (US$ 137 M, referencia 2025 declarada). Residuos → el refresco del
+   pendiente 2 (3 barras 2026), mapeo central→zona (AUD-026) y calce mensual
+   (AUD-028).
 4. ⏸ **Prospección de cliente real (Maule, cerca de Curepto)** — candidatos mapeados
    (2026-07-14, bitácora): PMGD = calce directo del producto (Solek/Pencahue Este a
    ~40 km; oEnergy/El Tiuque, primer PMGD+BESS de Chile, en San Javier); viñas del
